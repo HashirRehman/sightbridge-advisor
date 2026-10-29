@@ -39,7 +39,12 @@ def build_object_store(settings: Settings) -> ObjectStore:
     )
 
 
-def build_generator(settings: Settings) -> AnswerGenerator:
+def build_generator(
+    settings: Settings,
+    *,
+    primary_timeout: float | None = None,
+    fallback_timeout: float | None = None,
+) -> AnswerGenerator:
     if settings.llm_provider == "local":
         return LocalExtractiveGenerator()
     client = build_bedrock_runtime_client(settings)
@@ -52,7 +57,9 @@ def build_generator(settings: Settings) -> AnswerGenerator:
             model_id,
             settings.max_output_tokens,
             settings.aws_region,
-            settings.generation_timeout_seconds if index == 0 else settings.answer_timeout_seconds,
+            (primary_timeout or settings.generation_timeout_seconds)
+            if index == 0
+            else (fallback_timeout or settings.answer_timeout_seconds),
         )
         for index, model_id in enumerate(model_ids)
     ]
@@ -65,6 +72,8 @@ def build_answer_service(
     embedder: Embedder,
     generator: AnswerGenerator,
     safety_gate: SafetyGate | None = None,
+    *,
+    timeout_seconds: float | None = None,
 ) -> AnswerService:
     return AnswerService(
         embedder,
@@ -72,7 +81,7 @@ def build_answer_service(
         generator,
         top_k=settings.retrieval_top_k,
         min_similarity=settings.retrieval_min_similarity,
-        timeout_seconds=settings.answer_timeout_seconds,
+        timeout_seconds=timeout_seconds or settings.answer_timeout_seconds,
         safety_gate=safety_gate or build_safety_gate(settings),
     )
 

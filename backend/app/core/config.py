@@ -47,6 +47,8 @@ class Settings(BaseSettings):
     safety_model_id: str = "apac.amazon.nova-lite-v1:0"
     safety_timeout_seconds: float = Field(default=4.0, gt=0, le=6)
     max_concurrent_answers: int = Field(default=4, ge=1, le=20)
+    worker_answer_timeout_seconds: float = Field(default=40.0, gt=0, le=45)
+    worker_generation_timeout_seconds: float = Field(default=25.0, gt=0, le=30)
 
     # "local" = HS256 tokens minted by the Next.js dev server; refused in production.
     auth_provider: Literal["cognito", "local"] = "cognito"

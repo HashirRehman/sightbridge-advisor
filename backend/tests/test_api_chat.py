@@ -1,6 +1,6 @@
 from collections.abc import Iterator
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -334,3 +334,105 @@ def test_global_answer_capacity_is_reserved_before_generation(client: TestClient
     response = _ask(client, ADVISOR_A, "What is a DST?")
     assert response.status_code == 429 and response.headers["Retry-After"] == "5"
     assert _exchange_count() == 0
+
+
+def test_background_request_is_claimed_once_and_result_is_private(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.api.dependencies.services import get_answer_dispatcher
+    from app.application.chat.worker import process_answer_event
+
+    class Dispatcher:
+        def __init__(self) -> None:
+            self.events: list[dict[str, Any]] = []
+
+        def dispatch(self, payload: dict[str, Any]) -> None:
+            self.events.append(payload)
+
+    dispatcher = Dispatcher()
+    client.app.dependency_overrides[get_answer_dispatcher] = lambda: dispatcher  # type: ignore[attr-defined]
+    nonce = str(uuid4())
+    response = _ask(client, ADVISOR_A, "What is a DST?", activity_id=nonce, background=True)
+    assert response.status_code == 202 and response.json()["finished"] is False
+    assert len(dispatcher.events) == 1
+    assert (
+        client.get(f"/api/chat/activity/{nonce}/result", headers=auth(ADVISOR_A)).status_code == 409
+    )
+    assert (
+        client.get(f"/api/chat/activity/{nonce}/result", headers=auth(ADVISOR_B)).status_code == 404
+    )
+    monkeypatch.setattr(
+        "app.application.chat.worker.build_answer_service",
+        lambda *args, **kwargs: FakeAnswerService(),
+    )
+    tampered = {**dispatcher.events[0], "question": "Changed payload"}
+    assert process_answer_event(tampered)["status"] == "ignored"
+    assert (
+        process_answer_event({**dispatcher.events[0], "requestContext": {}})["status"] == "ignored"
+    )
+    assert process_answer_event(dispatcher.events[0])["status"] == "completed"
+    assert process_answer_event(dispatcher.events[0])["status"] == "ignored"
+    result = client.get(f"/api/chat/activity/{nonce}/result", headers=auth(ADVISOR_A))
+    assert result.status_code == 200
+    assert _exchange_count() == 1
+    again = _ask(client, ADVISOR_A, "What is a DST?", activity_id=nonce, background=True)
+    assert again.status_code == 200 and again.json()["id"] == result.json()["id"]
+    assert len(dispatcher.events) == 1
+
+
+def test_background_privacy_refusal_is_immediate_and_never_dispatched(client: TestClient) -> None:
+    from app.api.dependencies.services import get_answer_dispatcher
+
+    class Dispatcher:
+        def dispatch(self, payload: dict[str, Any]) -> None:
+            raise AssertionError("private input must not enter the worker event")
+
+    client.app.dependency_overrides[get_answer_dispatcher] = Dispatcher  # type: ignore[attr-defined]
+    response = _ask(client, ADVISOR_A, "My SSN is 123-45-6789. Explain a DST", background=True)
+    assert response.status_code == 200
+    assert response.json()["reason"] == "sensitive_data"
+    assert "123-45-6789" not in str(response.json())
+
+
+def test_expired_background_request_cannot_bypass_quotas_by_being_replayed(
+    client: TestClient,
+) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from app.infrastructure.database.models import AnswerActivity
+
+    nonce = uuid4()
+    question = "What is a DST?"
+    import hashlib
+
+    with get_session_factory()() as session:
+        session.add(
+            AnswerActivity(
+                id=nonce,
+                user_id="advisor-a",
+                fingerprint=hashlib.sha256(f"None:{question}".encode()).hexdigest(),
+                steps=[],
+                created_at=datetime.now(UTC) - timedelta(seconds=140),
+            )
+        )
+        session.commit()
+    response = _ask(client, ADVISOR_A, question, activity_id=str(nonce), background=True)
+    assert response.status_code == 410
+    assert _exchange_count() == 0
+
+
+def test_result_ownership_is_checked_even_if_a_telemetry_link_is_wrong(client: TestClient) -> None:
+    from app.infrastructure.database.models import AnswerActivity
+
+    nonce = str(uuid4())
+    _ask(client, ADVISOR_A, "What is a DST?", activity_id=nonce)
+    other = _ask(client, ADVISOR_B, "What is a DST?").json()
+    with get_session_factory()() as session:
+        record = session.get(AnswerActivity, UUID(nonce))
+        assert record is not None
+        record.exchange_id = UUID(other["id"])
+        session.commit()
+    assert (
+        client.get(f"/api/chat/activity/{nonce}/result", headers=auth(ADVISOR_A)).status_code == 404
+    )
+    assert _ask(client, ADVISOR_A, "What is a DST?", activity_id=nonce).status_code == 404

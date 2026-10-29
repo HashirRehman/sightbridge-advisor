@@ -183,15 +183,44 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   me: () => request<Me>("me"),
-  ask: (question: string, conversationId?: string, activityId?: string) =>
-    request<Exchange>("chat", {
+  ask: async (
+    question: string,
+    conversationId?: string,
+    activityId?: string,
+    signal?: AbortSignal,
+  ) => {
+    const response = await request<Exchange | AnswerActivity>("chat", {
       method: "POST",
+      signal,
       body: JSON.stringify({
         question,
         conversation_id: conversationId ?? null,
         activity_id: activityId ?? null,
+        background: true,
       }),
-    }),
+    });
+    if ("conversation_id" in response) return response;
+    const expires = Date.now() + 130_000;
+    while (Date.now() < expires) {
+      if (signal?.aborted)
+        throw new ApiError(
+          0,
+          "Request interrupted. You can recover it by trying again.",
+        );
+      try {
+        return await request<Exchange>(`chat/activity/${response.id}/result`, {
+          signal,
+        });
+      } catch (e) {
+        if (!(e instanceof ApiError) || e.status !== 409) throw e;
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 1400));
+    }
+    throw new ApiError(
+      410,
+      "This request could not finish. Please send your question again.",
+    );
+  },
   activity: (id: string, signal: AbortSignal) =>
     request<AnswerActivity>(`chat/activity/${id}`, { signal }),
   conversations: () => request<ConversationSummary[]>("conversations"),

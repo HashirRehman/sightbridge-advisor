@@ -73,12 +73,26 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--label", default=None)
     parser.add_argument("--chat-model", help="Evaluate one Bedrock model with fallback disabled")
+    parser.add_argument(
+        "--worker-budget",
+        action="store_true",
+        help="Use the production background-worker time budget",
+    )
     args = parser.parse_args()
     settings = get_settings()
     if args.chat_model:
         settings = isolated_model_settings(settings, args.chat_model)
     configure_logging("WARNING")
-    embedder, generator = build_embedder(settings), build_generator(settings)
+    embedder = build_embedder(settings)
+    generator = (
+        build_generator(
+            settings,
+            primary_timeout=settings.worker_generation_timeout_seconds,
+            fallback_timeout=settings.worker_answer_timeout_seconds,
+        )
+        if args.worker_budget
+        else build_generator(settings)
+    )
     label = args.label or re.sub(
         r"[^A-Za-z0-9_.-]", "_", f"{embedder.model_id}__{getattr(generator, 'model_id', 'llm')}"
     )
@@ -87,7 +101,17 @@ def main() -> int:
     items = json.loads((EVAL_DIR / "questions.json").read_text())["items"]
     rows = []
     with get_session_factory()() as session:
-        service = build_answer_service(session, settings, embedder, generator)
+        service = (
+            build_answer_service(
+                session,
+                settings,
+                embedder,
+                generator,
+                timeout_seconds=settings.worker_answer_timeout_seconds,
+            )
+            if args.worker_budget
+            else build_answer_service(session, settings, embedder, generator)
+        )
         for item in items:
             started = time.perf_counter()
             answer = service.answer(item["question"])
@@ -114,8 +138,13 @@ def main() -> int:
         ),
         "responses_by_model": dict(Counter(row["model_id"] for row in rows if row["model_id"])),
         "min_similarity": settings.retrieval_min_similarity,
-        "generation_timeout_seconds": settings.generation_timeout_seconds,
-        "answer_timeout_seconds": settings.answer_timeout_seconds,
+        "generation_timeout_seconds": settings.worker_generation_timeout_seconds
+        if args.worker_budget
+        else settings.generation_timeout_seconds,
+        "answer_timeout_seconds": settings.worker_answer_timeout_seconds
+        if args.worker_budget
+        else settings.answer_timeout_seconds,
+        "execution_mode": "worker" if args.worker_budget else "synchronous",
         "max_output_tokens": settings.max_output_tokens,
         "passed": sum(row["passed"] for row in rows),
         "total": len(rows),

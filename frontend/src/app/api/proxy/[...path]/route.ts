@@ -9,7 +9,7 @@ import { getIdToken } from "@/lib/server/session";
 const ALLOWED: Array<{ method: string; pattern: RegExp }> = [
   { method: "GET", pattern: /^me$/ },
   { method: "POST", pattern: /^chat$/ },
-  { method: "GET", pattern: /^chat\/activity\/[0-9a-f-]{36}$/ },
+  { method: "GET", pattern: /^chat\/activity\/[0-9a-f-]{36}(?:\/result)?$/ },
   { method: "GET", pattern: /^conversations$/ },
   { method: "GET", pattern: /^conversations\/[0-9a-f-]{36}$/ },
   { method: "GET", pattern: /^admin\/exchanges$/ },

@@ -1,3 +1,4 @@
+import os
 from functools import lru_cache
 from typing import Annotated
 
@@ -7,10 +8,12 @@ from sqlalchemy.orm import Session
 from app.application.chat.service import ChatService
 from app.application.rag.service import AnswerService
 from app.core.config import get_settings
+from app.domain.interfaces.dispatch import AnswerDispatcher, DispatchError
 from app.domain.interfaces.embedding import Embedder
 from app.domain.interfaces.generation import AnswerGenerator
 from app.domain.interfaces.safety import SafetyGate
 from app.infrastructure.database.session import get_db_session
+from app.infrastructure.dispatch import LambdaAnswerDispatcher, LocalAnswerDispatcher
 from app.infrastructure.factory import (
     build_answer_service,
     build_embedder,
@@ -19,6 +22,17 @@ from app.infrastructure.factory import (
 )
 
 DbSession = Annotated[Session, Depends(get_db_session)]
+
+
+@lru_cache
+def get_answer_dispatcher() -> AnswerDispatcher:
+    settings = get_settings()
+    if settings.environment != "production":
+        return LocalAnswerDispatcher()
+    name = os.environ.get("AWS_LAMBDA_FUNCTION_NAME", "")
+    if not name:
+        raise DispatchError("worker not configured")
+    return LambdaAnswerDispatcher(name, settings.aws_region)
 
 
 # Clients are created once per process (Lambda instance) and reused across requests.

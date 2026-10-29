@@ -17,6 +17,8 @@ from sqlalchemy.orm import Session
 
 from app.application.rag.activity import ActivityTracker, activity_step, track_activity
 from app.application.rag.service import NOTICE_FAILED, NOTICE_PRIVACY, AnswerService
+from app.domain.interfaces.dispatch import AnswerDispatcher
+from app.domain.interfaces.safety import SafetyVerdict
 from app.domain.models.answers import (
     AnswerReason,
     AnswerStatus,
@@ -25,8 +27,9 @@ from app.domain.models.answers import (
     VerifiedClaim,
 )
 from app.domain.models.identity import Principal
-from app.domain.policies.safety import question_for_storage, sensitive_input
-from app.infrastructure.database.models import AnswerActivity, Exchange
+from app.domain.policies.question_policy import PolicyOutcome, evaluate_question
+from app.domain.policies.safety import local_safety_verdict, question_for_storage, sensitive_input
+from app.infrastructure.database.models import AnswerActivity, Conversation, Exchange
 from app.infrastructure.repositories.activity import ActivityRepository
 from app.infrastructure.repositories.chat import ChatRepository
 
@@ -37,6 +40,10 @@ TITLE_MAX_CHARS = 80
 
 class ConversationNotFoundError(Exception):
     """Unknown conversation *or* owned by someone else (indistinguishable on purpose)."""
+
+
+class ActivityExpiredError(Exception):
+    pass
 
 
 class ActivityConflictError(Exception):
@@ -86,6 +93,45 @@ class ChatService:
         self._max_concurrent = max_concurrent
         self._clock = clock
 
+    def start(
+        self,
+        principal: Principal,
+        question: str,
+        conversation_id: uuid.UUID | None,
+        request_id: str | None,
+        activity_id: uuid.UUID | None,
+        dispatcher: AnswerDispatcher,
+    ) -> Exchange | AnswerActivity:
+        activity_id = activity_id or uuid.uuid4()
+        # Metadata replies and deterministic refusals need no queue or model call.
+        decision = evaluate_question(question)
+        if local_safety_verdict(question) is not SafetyVerdict.ALLOW or decision.outcome in (
+            PolicyOutcome.CAPABILITIES,
+            PolicyOutcome.PROMPT_INJECTION,
+            PolicyOutcome.OUT_OF_SCOPE,
+        ):
+            return self.ask(principal, question, conversation_id, request_id, activity_id)
+        _, activity = self.reserve(principal, question, conversation_id, activity_id)
+        if activity.exchange_id is not None:
+            cached = self._session.get(Exchange, activity.exchange_id)
+            if cached is None or cached.user_id != principal.user_id:
+                raise ConversationNotFoundError
+            return cached
+        self._repo.upsert_user(principal)
+        self._session.commit()
+        if activity.claimed_at is None and activity.finished_at is None:
+            dispatcher.dispatch(
+                {
+                    "source": "sightbridge.answer-worker",
+                    "activity_id": str(activity_id),
+                    "user_id": principal.user_id,
+                    "question": question,
+                    "conversation_id": str(conversation_id) if conversation_id else None,
+                    "request_id": request_id,
+                }
+            )
+        return activity
+
     def ask(
         self,
         principal: Principal,
@@ -94,12 +140,29 @@ class ChatService:
         request_id: str | None,
         activity_id: uuid.UUID | None = None,
     ) -> Exchange:
+        activity_id = activity_id or uuid.uuid4()
+        _, activity = self.reserve(principal, question, conversation_id, activity_id)
+        if activity.exchange_id is not None:
+            cached = self._session.get(Exchange, activity.exchange_id)
+            if cached is None or cached.user_id != principal.user_id:
+                raise ConversationNotFoundError
+            return cached
+        if not ActivityRepository(self._session).claim(activity.id):
+            raise ActivityConflictError("This request is already being processed.")
+        return self.process_reserved(principal, question, conversation_id, request_id, activity)
+
+    def reserve(
+        self,
+        principal: Principal,
+        question: str,
+        conversation_id: uuid.UUID | None,
+        activity_id: uuid.UUID,
+    ) -> tuple[Conversation | None, AnswerActivity]:
         conversation = None
         if conversation_id is not None:
             conversation = self._repo.get_owned_conversation(conversation_id, principal.user_id)
             if conversation is None:
                 raise ConversationNotFoundError
-        activity_id = activity_id or uuid.uuid4()
         activities = ActivityRepository(self._session)
         activities.lock_capacity()
         activities.lock_user(principal.user_id)
@@ -109,14 +172,19 @@ class ChatService:
         if existing is not None:
             if existing.user_id != principal.user_id:
                 raise ConversationNotFoundError
-            if existing.fingerprint != fingerprint or existing.exchange_id is None:
+            if existing.fingerprint != fingerprint:
                 raise ActivityConflictError(
                     "This request is already being processed or has different content."
                 )
-            cached = self._session.get(Exchange, existing.exchange_id)
-            assert cached is not None
+            if existing.exchange_id is None and (
+                existing.finished_at is not None
+                or existing.created_at < self._clock() - timedelta(seconds=130)
+            ):
+                existing.finished_at = self._clock()
+                self._session.commit()
+                raise ActivityExpiredError
             self._session.commit()
-            return cached
+            return conversation, existing
         self._enforce_rate_limit(principal.user_id)
         if activities.active(principal.user_id, self._clock()) >= 2:
             raise RateLimitExceededError(5)
@@ -124,6 +192,25 @@ class ChatService:
             raise RateLimitExceededError(5)
         activity = activities.reserve(activity_id, principal.user_id, fingerprint)
         self._session.commit()
+        return conversation, activity
+
+    def process_reserved(
+        self,
+        principal: Principal,
+        question: str,
+        conversation_id: uuid.UUID | None,
+        request_id: str | None,
+        activity: AnswerActivity,
+    ) -> Exchange:
+        activity_id = activity.id
+        conversation = (
+            self._repo.get_owned_conversation(conversation_id, principal.user_id)
+            if conversation_id
+            else None
+        )
+        if conversation_id is not None and conversation is None:
+            raise ConversationNotFoundError
+        stored_question = question_for_storage(question)
         bind = self._session.get_bind()
 
         def publish(steps: list[dict[str, Any]]) -> None:

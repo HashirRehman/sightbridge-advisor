@@ -153,6 +153,7 @@ export function ChatView() {
         question,
         conversationId ?? localConversation.current ?? undefined,
         activityId,
+        controller.signal,
       );
       setExchanges((prev) =>
         prev.some((item) => item.id === exchange.id)
@@ -169,7 +170,16 @@ export function ChatView() {
         e instanceof ApiError
           ? e.message
           : "Something went wrong. Please try again.";
-      setError({ message, retry: { question, activityId } });
+      setError({
+        message,
+        retry: {
+          question,
+          activityId:
+            e instanceof ApiError && e.status === 410
+              ? crypto.randomUUID()
+              : activityId,
+        },
+      });
     } finally {
       window.clearInterval(timer);
       controller.abort();

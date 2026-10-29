@@ -46,6 +46,7 @@ test("a suggested question is submitted and the cited answer is shown", async ({
     question: "What is a Delaware Statutory Trust?",
     conversation_id: null,
     activity_id: expect.stringMatching(/^[0-9a-f-]{36}$/),
+    background: true,
   });
 
   const source = answer.getByRole("link", { name: /Revenue Ruling 2004-86/ });
@@ -462,6 +463,7 @@ test("the real proxy allows only the new read-only corpus routes", async ({
   // request reaches it and returns 502, while unknown paths remain 404.
   const paths = [
     "chat/activity/11111111-1111-4111-8111-111111111111",
+    "chat/activity/11111111-1111-4111-8111-111111111111/result",
     "admin/knowledge-base",
     "admin/documents/irs-rev-rul-2004-86/chunks",
   ];
@@ -642,4 +644,91 @@ test("the app disables framing and unnecessary browser capabilities", async ({
   expect(response.headers()["content-security-policy"]).toContain(
     "frame-ancestors 'none'",
   );
+});
+
+test("accepted background work keeps reporting activity until its checked result is ready", async ({
+  page,
+}) => {
+  let ready = false;
+  let nonce = "";
+  const step = {
+    id: 0,
+    kind: "model_call",
+    status: "running",
+    started_ms: 0,
+    finished_ms: null,
+    model_id: "deepseek.v3.2",
+    source_count: null,
+  };
+  await mockApi(page, {
+    chat: (route) => {
+      const body = route.request().postDataJSON();
+      expect(body.background).toBe(true);
+      nonce = body.activity_id;
+      return json(
+        route,
+        { id: nonce, steps: [], finished: false, exchange_id: null },
+        202,
+      );
+    },
+  });
+  await page.route("**/api/proxy/chat/activity/*", (route) =>
+    json(route, {
+      id: nonce,
+      steps: [step],
+      finished: ready,
+      exchange_id: null,
+    }),
+  );
+  await page.route("**/api/proxy/chat/activity/*/result", (route) =>
+    ready
+      ? json(
+          route,
+          exchange({
+            activity: [{ ...step, status: "completed", finished_ms: 1200 }],
+          }),
+        )
+      : json(route, { detail: "Still processing" }, 409),
+  );
+  await signIn(page);
+  await page.getByLabel(/Ask about/).fill("Explain a 1031 exchange");
+  const accepted = page.waitForResponse(
+    (r) => r.url().includes("/api/proxy/chat") && r.status() === 202,
+  );
+  await page.getByRole("button", { name: "Send question" }).click();
+  await accepted;
+  await expect(page.getByText("DeepSeek V3.2", { exact: true })).toBeVisible();
+  await expect(page.getByRole("article")).toHaveCount(0);
+  ready = true;
+  await expect(
+    page.getByRole("article", { name: "Assistant answer" }),
+  ).toBeVisible();
+});
+
+test("an expired background request uses a fresh ID only after an explicit retry", async ({
+  page,
+}) => {
+  const ids: string[] = [];
+  await mockApi(page, {
+    chat: (route) => {
+      ids.push(route.request().postDataJSON().activity_id);
+      return ids.length === 1
+        ? json(
+            route,
+            { id: ids[0], steps: [], finished: true, exchange_id: null },
+            202,
+          )
+        : json(route, exchange());
+    },
+  });
+  await page.route("**/api/proxy/chat/activity/*/result", (route) =>
+    json(route, { detail: "This request expired." }, 410),
+  );
+  await signIn(page);
+  await page.getByLabel(/Ask about/).fill("What is a DST?");
+  await page.getByRole("button", { name: "Send question" }).click();
+  await page.getByRole("button", { name: "Try again", exact: true }).click();
+  await expect(page.getByRole("article")).toHaveCount(1);
+  expect(ids).toHaveLength(2);
+  expect(ids[0]).not.toBe(ids[1]);
 });

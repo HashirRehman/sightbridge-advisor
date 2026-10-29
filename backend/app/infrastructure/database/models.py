@@ -190,6 +190,7 @@ class AnswerActivity(TimestampMixin, Base):
         ForeignKey("exchanges.id", ondelete="RESTRICT")
     )
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     __table_args__ = (
         Index("ix_answer_activity_user_created", "user_id", "created_at"),
         Index("ix_answer_activity_created", "created_at"),

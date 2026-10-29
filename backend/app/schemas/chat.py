@@ -20,6 +20,7 @@ class ChatRequest(BaseModel):
     question: str = Field(min_length=3, max_length=MAX_QUESTION_CHARS)
     conversation_id: uuid.UUID | None = None
     activity_id: uuid.UUID | None = None
+    background: bool = False
 
     @field_validator("question")
     @classmethod

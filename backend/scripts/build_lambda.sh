@@ -16,7 +16,7 @@ uv pip install \
   --only-binary :all:
 
 # Keep botocore API models only for services the API calls (saves ~20 MB unzipped).
-KEEP="bedrock-runtime bedrock ssm s3 sts sso sso-oidc"
+KEEP="bedrock-runtime bedrock lambda ssm s3 sts sso sso-oidc"
 for svc in dist/build/botocore/data/*/; do
   name=$(basename "$svc")
   [[ " $KEEP " == *" $name "* ]] || rm -rf "$svc"

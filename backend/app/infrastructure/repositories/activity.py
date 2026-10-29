@@ -17,6 +17,20 @@ class ActivityRepository:
         key = int.from_bytes(hashlib.sha256(user_id.encode()).digest()[:8], signed=True)
         self.session.execute(select(func.pg_advisory_xact_lock(key)))
 
+    def claim(self, activity_id: uuid.UUID) -> bool:
+        claimed = self.session.execute(
+            update(AnswerActivity)
+            .where(
+                AnswerActivity.id == activity_id,
+                AnswerActivity.claimed_at.is_(None),
+                AnswerActivity.finished_at.is_(None),
+            )
+            .values(claimed_at=func.now())
+            .returning(AnswerActivity.id)
+        ).scalar_one_or_none()
+        self.session.commit()
+        return claimed is not None
+
     def lock_capacity(self) -> None:
         self.session.execute(select(func.pg_advisory_xact_lock(7419, 1)))
 
@@ -27,7 +41,7 @@ class ActivityRepository:
                 .select_from(AnswerActivity)
                 .where(
                     AnswerActivity.finished_at.is_(None),
-                    AnswerActivity.created_at >= now - timedelta(seconds=45),
+                    AnswerActivity.created_at >= now - timedelta(seconds=130),
                 )
             )
             or 0
@@ -61,7 +75,7 @@ class ActivityRepository:
                 .where(
                     AnswerActivity.user_id == user_id,
                     AnswerActivity.finished_at.is_(None),
-                    AnswerActivity.created_at >= now - timedelta(seconds=45),
+                    AnswerActivity.created_at >= now - timedelta(seconds=130),
                 )
             )
             or 0

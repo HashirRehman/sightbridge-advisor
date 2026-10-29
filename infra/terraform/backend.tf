@@ -39,6 +39,11 @@ resource "aws_iam_role" "api" {
 
 data "aws_iam_policy_document" "api" {
   statement {
+    sid       = "DispatchOwnAnswerWorker"
+    actions   = ["lambda:InvokeFunction"]
+    resources = [aws_lambda_function.api.arn]
+  }
+  statement {
     sid       = "Logs"
     actions   = ["logs:CreateLogStream", "logs:PutLogEvents"]
     resources = ["${aws_cloudwatch_log_group.api_lambda.arn}:*"]
@@ -123,7 +128,7 @@ resource "aws_lambda_function" "api" {
   s3_key           = aws_s3_object.lambda_zip.key
   source_code_hash = filebase64sha256(var.lambda_zip_path)
   memory_size      = 1024
-  timeout          = 29 # API Gateway HTTP APIs cap integrations at 30 s
+  timeout          = 60 # Background worker; synchronous model calls retain their 20-second budget.
 
   logging_config {
     log_format = "Text" # the app already emits structured JSON lines
@@ -152,6 +157,12 @@ resource "aws_lambda_function" "api" {
       CORS_ALLOWED_ORIGINS           = ""
     }
   }
+}
+
+resource "aws_lambda_function_event_invoke_config" "api" {
+  function_name                = aws_lambda_function.api.function_name
+  maximum_event_age_in_seconds = 60
+  maximum_retry_attempts       = 0
 }
 
 # --- HTTP API with stage-level throttling as a cost/abuse backstop ---
