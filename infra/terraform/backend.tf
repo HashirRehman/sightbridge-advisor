@@ -6,6 +6,8 @@ locals {
   is_profile          = local.chat_base_model != var.chat_model_id
   fallback_base_model = replace(var.fallback_chat_model_id, "/^(us|eu|apac|global)\\./", "")
   fallback_is_profile = local.fallback_base_model != var.fallback_chat_model_id
+  safety_base_model   = replace(var.safety_model_id, "/^(us|eu|apac|global)\\./", "")
+  safety_is_profile   = local.safety_base_model != var.safety_model_id
 }
 
 # --- Logs (short retention keeps CloudWatch inside the free allowance) ---
@@ -78,6 +80,8 @@ data "aws_iam_policy_document" "api" {
         "arn:${local.partition}:bedrock:${split("-", var.region)[0]}-*::foundation-model/${local.fallback_base_model}",
       ],
       local.fallback_is_profile ? ["arn:${local.partition}:bedrock:${var.region}:${local.account_id}:inference-profile/${var.fallback_chat_model_id}"] : [],
+      ["arn:${local.partition}:bedrock:${split("-", var.region)[0]}-*::foundation-model/${local.safety_base_model}"],
+      local.safety_is_profile ? ["arn:${local.partition}:bedrock:${var.region}:${local.account_id}:inference-profile/${var.safety_model_id}"] : [],
     )
   }
 }
@@ -138,6 +142,7 @@ resource "aws_lambda_function" "api" {
       BEDROCK_EMBEDDING_MODEL_ID     = var.embedding_model_id
       BEDROCK_API_KEY_SSM_PARAMETER  = var.bedrock_api_key_ssm_parameter
       GENERATION_TIMEOUT_SECONDS     = tostring(var.generation_timeout_seconds)
+      SAFETY_MODEL_ID                = var.safety_model_id
       RETRIEVAL_MIN_SIMILARITY       = tostring(var.retrieval_min_similarity)
       AUTH_PROVIDER                  = "cognito"
       COGNITO_REGION                 = var.region
@@ -169,14 +174,26 @@ resource "aws_apigatewayv2_route" "default" {
   target    = "integrations/${aws_apigatewayv2_integration.lambda.id}"
 }
 
+resource "aws_apigatewayv2_route" "chat" {
+  api_id    = aws_apigatewayv2_api.http.id
+  route_key = "POST /api/chat"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda.id}"
+}
+
 resource "aws_apigatewayv2_stage" "default" {
   api_id      = aws_apigatewayv2_api.http.id
   name        = "$default"
   auto_deploy = true
 
   default_route_settings {
-    throttling_burst_limit = 10
-    throttling_rate_limit  = 5
+    throttling_burst_limit = 20
+    throttling_rate_limit  = 10
+  }
+
+  route_settings {
+    route_key              = aws_apigatewayv2_route.chat.route_key
+    throttling_burst_limit = 4
+    throttling_rate_limit  = 2
   }
 
   access_log_settings {

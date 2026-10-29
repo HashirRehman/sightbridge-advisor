@@ -19,6 +19,7 @@ class ChatRequest(BaseModel):
 
     question: str = Field(min_length=3, max_length=MAX_QUESTION_CHARS)
     conversation_id: uuid.UUID | None = None
+    activity_id: uuid.UUID | None = None
 
     @field_validator("question")
     @classmethod
@@ -34,6 +35,33 @@ class ChatRequest(BaseModel):
 class ClaimOut(BaseModel):
     text: str
     citations: list[int]
+
+
+class ActivityStepOut(BaseModel):
+    id: int
+    kind: Literal[
+        "policy",
+        "safety",
+        "embedding",
+        "retrieval",
+        "generation",
+        "model_call",
+        "verification",
+        "output_check",
+        "privacy_check",
+    ]
+    status: Literal["running", "completed", "failed"]
+    started_ms: int
+    finished_ms: int | None = None
+    model_id: str | None = None
+    source_count: int | None = None
+
+
+class ActivityOut(BaseModel):
+    id: uuid.UUID
+    steps: list[ActivityStepOut]
+    finished: bool
+    exchange_id: uuid.UUID | None
 
 
 class CitationOut(BaseModel):
@@ -59,6 +87,7 @@ class ExchangeOut(BaseModel):
     citations: list[CitationOut]
     disclaimer: str
     created_at: datetime
+    activity: list[ActivityStepOut] = Field(default_factory=list)
 
     @classmethod
     def from_model(cls, e: Exchange) -> "ExchangeOut":
@@ -75,6 +104,7 @@ class ExchangeOut(BaseModel):
             citations=[CitationOut.model_validate(s) for s in e.sources],
             disclaimer=payload["disclaimer"],
             created_at=e.created_at,
+            activity=payload.get("activity", []),
         )
 
 

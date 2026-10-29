@@ -6,6 +6,7 @@ from langchain_aws import ChatBedrockConverse
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from pydantic import ValidationError
 
+from app.application.rag.activity import activity_step
 from app.application.rag.prompts import SYSTEM_PROMPT, render_user_message
 from app.domain.interfaces.generation import GenerationError, GenerationMode, GenerationResult
 from app.domain.models.answers import AnswerDraft, LabeledPassage, TokenUsage
@@ -51,6 +52,12 @@ class BedrockAnswerGenerator:
     def generate(
         self, question: str, passages: list[LabeledPassage], mode: GenerationMode
     ) -> GenerationResult:
+        with activity_step("model_call", self._model_id):
+            return self._generate(question, passages, mode)
+
+    def _generate(
+        self, question: str, passages: list[LabeledPassage], mode: GenerationMode
+    ) -> GenerationResult:
         messages = [
             SystemMessage(SYSTEM_PROMPT),
             HumanMessage(render_user_message(question, passages, mode)),
@@ -62,7 +69,7 @@ class BedrockAnswerGenerator:
         except (ClientError, BotoCoreError) as exc:
             code = exc.response["Error"]["Code"] if isinstance(exc, ClientError) else "transport"
             logger.warning("bedrock invocation failed", extra={"error_code": code})
-            raise GenerationError(f"bedrock error: {code}") from exc
+            raise GenerationError(f"bedrock error: {code}") from None
 
         if not isinstance(result, dict):
             raise GenerationError("model returned malformed structured output")
@@ -70,14 +77,14 @@ class BedrockAnswerGenerator:
         if isinstance(parsed, dict):
             try:
                 parsed = AnswerDraft.model_validate(parsed)
-            except ValidationError as exc:
-                raise GenerationError("model returned malformed structured output") from exc
+            except ValidationError:
+                raise GenerationError("model returned malformed structured output") from None
         if not isinstance(parsed, AnswerDraft):
             error = result.get("parsing_error")
-            logger.warning("model output failed schema validation", extra={"error": str(error)})
-            raise GenerationError("model returned malformed structured output") from (
-                error if isinstance(error, (ValidationError, Exception)) else None
+            logger.warning(
+                "model output failed schema validation", extra={"error_type": type(error).__name__}
             )
+            raise GenerationError("model returned malformed structured output") from None
 
         raw = result.get("raw")
         usage = None

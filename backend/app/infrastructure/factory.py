@@ -8,10 +8,12 @@ from app.application.rag.service import AnswerService
 from app.core.config import Settings
 from app.domain.interfaces.embedding import Embedder
 from app.domain.interfaces.generation import AnswerGenerator
+from app.domain.interfaces.safety import SafetyGate
 from app.domain.interfaces.storage import ObjectStore
 from app.infrastructure.bedrock.client import build_bedrock_runtime_client
 from app.infrastructure.bedrock.embeddings import BedrockTitanEmbedder
 from app.infrastructure.bedrock.generator import BedrockAnswerGenerator
+from app.infrastructure.bedrock.safety import BedrockSafetyGate, LocalSafetyGate
 from app.infrastructure.retrieval.local_embedder import LocalHashingEmbedder
 from app.infrastructure.retrieval.local_generator import LocalExtractiveGenerator
 from app.infrastructure.retrieval.pgvector_retriever import PgVectorPassageRetriever
@@ -58,7 +60,11 @@ def build_generator(settings: Settings) -> AnswerGenerator:
 
 
 def build_answer_service(
-    session: Session, settings: Settings, embedder: Embedder, generator: AnswerGenerator
+    session: Session,
+    settings: Settings,
+    embedder: Embedder,
+    generator: AnswerGenerator,
+    safety_gate: SafetyGate | None = None,
 ) -> AnswerService:
     return AnswerService(
         embedder,
@@ -67,4 +73,16 @@ def build_answer_service(
         top_k=settings.retrieval_top_k,
         min_similarity=settings.retrieval_min_similarity,
         timeout_seconds=settings.answer_timeout_seconds,
+        safety_gate=safety_gate or build_safety_gate(settings),
+    )
+
+
+def build_safety_gate(settings: Settings) -> SafetyGate:
+    if settings.llm_provider == "local":
+        return LocalSafetyGate()
+    return BedrockSafetyGate(
+        build_bedrock_runtime_client(settings),
+        settings.safety_model_id,
+        settings.aws_region,
+        settings.safety_timeout_seconds,
     )

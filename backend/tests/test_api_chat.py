@@ -243,3 +243,94 @@ def test_exchanges_are_append_only_at_database_level(client: TestClient) -> None
         s.rollback()
         with pytest.raises(DBAPIError, match="append-only"):
             s.execute(text("DELETE FROM exchanges"))
+
+
+def test_activity_is_owned_and_replays_do_not_duplicate_an_exchange(client: TestClient) -> None:
+    activity_id = str(uuid4())
+    first = _ask(client, ADVISOR_A, "What is a DST?", activity_id=activity_id)
+    assert first.status_code == 200
+    again = _ask(client, ADVISOR_A, "What is a DST?", activity_id=activity_id)
+    assert again.json()["id"] == first.json()["id"]
+    assert _exchange_count() == 1
+    progress = client.get(f"/api/chat/activity/{activity_id}", headers=auth(ADVISOR_A))
+    assert progress.status_code == 200
+    assert progress.json()["finished"] is True
+    assert progress.json()["exchange_id"] == first.json()["id"]
+    assert client.get(f"/api/chat/activity/{activity_id}").status_code == 401
+    assert (
+        client.get(f"/api/chat/activity/{activity_id}", headers=auth(ADVISOR_B)).status_code == 404
+    )
+    conflict = _ask(client, ADVISOR_A, "A different question?", activity_id=activity_id)
+    assert conflict.status_code == 409 and _exchange_count() == 1
+
+
+def test_private_identifiers_are_removed_before_history_and_audit(client: TestClient) -> None:
+    private = "123-45-6789"
+    response = _ask(client, ADVISOR_A, f"My SSN is {private}. What is a DST?")
+    assert response.status_code == 200
+    assert response.json()["reason"] == "sensitive_data"
+    assert private not in str(response.json())
+    history = client.get("/api/conversations", headers=auth(ADVISOR_A)).json()
+    assert private not in str(history)
+    audit = client.get("/api/admin/exchanges", headers=auth(ADMIN)).json()
+    assert private not in str(audit)
+
+
+def test_activity_updates_while_request_runs_and_limits_concurrent_requests(
+    client: TestClient,
+) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Condition, Event
+
+    from app.application.rag.activity import activity_step
+
+    started, release = Condition(), Event()
+    calls = [0]
+
+    class BlockingAnswers:
+        def answer(self, question: str) -> AssistantAnswer:
+            with activity_step("retrieval"):
+                with started:
+                    calls[0] += 1
+                    started.notify_all()
+                release.wait(timeout=10)
+            return AssistantAnswer(status=AnswerStatus.UNSUPPORTED)
+
+    client.app.dependency_overrides[get_answer_service] = BlockingAnswers  # type: ignore[attr-defined]
+    ids = [str(uuid4()), str(uuid4())]
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        pending = [
+            pool.submit(_ask, client, ADVISOR_A, "What is a DST?", activity_id=id_) for id_ in ids
+        ]
+        try:
+            with started:
+                assert started.wait_for(lambda: calls[0] == 2, timeout=5)
+            running = client.get(f"/api/chat/activity/{ids[0]}", headers=auth(ADVISOR_A)).json()
+            assert running["finished"] is False
+            assert running["steps"][0]["kind"] == "retrieval"
+            assert running["steps"][0]["status"] == "running"
+            third = _ask(client, ADVISOR_A, "What is a DST?")
+            assert third.status_code == 429 and third.headers["Retry-After"] == "5"
+            assert _ask(client, ADVISOR_A, "What is a DST?", activity_id=ids[0]).status_code == 409
+        finally:
+            release.set()
+        assert all(p.result().status_code == 200 for p in pending)
+    finished = client.get(f"/api/chat/activity/{ids[0]}", headers=auth(ADVISOR_A)).json()
+    assert finished["finished"] is True
+    assert finished["steps"][0]["status"] == "completed"
+
+
+def test_global_answer_capacity_is_reserved_before_generation(client: TestClient) -> None:
+    from app.infrastructure.database.models import AnswerActivity
+
+    with get_session_factory()() as session:
+        session.add_all(
+            [
+                AnswerActivity(id=uuid4(), user_id=f"busy-{i}", fingerprint="0" * 64, steps=[])
+                for i in range(4)
+            ]
+        )
+        session.commit()
+    response = _ask(client, ADVISOR_A, "What is a DST?")
+    assert response.status_code == 429 and response.headers["Retry-After"] == "5"
+    assert _exchange_count() == 0

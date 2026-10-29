@@ -20,6 +20,7 @@ GRANTS = [
     f"GRANT SELECT ON documents, document_chunks TO {ROLE}",
     f"GRANT SELECT, INSERT, UPDATE ON users, conversations TO {ROLE}",
     f"GRANT SELECT, INSERT ON exchanges TO {ROLE}",
+    f"GRANT SELECT, INSERT, UPDATE, DELETE ON answer_activity TO {ROLE}",
 ]
 
 

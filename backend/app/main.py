@@ -42,6 +42,7 @@ def create_app() -> FastAPI:
     ) -> Response:
         incoming = request.headers.get("x-request-id", "")
         rid = incoming if 8 <= len(incoming) <= 64 and incoming.isascii() else uuid.uuid4().hex
+        request.state.request_id = rid
         token = request_id_var.set(rid)
         started = time.perf_counter()
         try:
@@ -49,6 +50,8 @@ def create_app() -> FastAPI:
         finally:
             request_id_var.reset(token)
         response.headers["X-Request-ID"] = rid
+        response.headers["Cache-Control"] = "private, no-store"
+        response.headers["X-Content-Type-Options"] = "nosniff"
         logger.info(
             "request",
             extra={
@@ -68,11 +71,21 @@ def create_app() -> FastAPI:
         return JSONResponse(status_code=422, content={"detail": errors})
 
     @app.exception_handler(Exception)
-    async def unhandled_error(_: Request, exc: Exception) -> JSONResponse:
-        logger.exception("unhandled error", exc_info=exc)
+    async def unhandled_error(request: Request, exc: Exception) -> JSONResponse:
+        logger.error(
+            "unhandled error",
+            extra={
+                "error_type": type(exc).__name__,
+                "request_id": getattr(request.state, "request_id", "-"),
+            },
+        )
         return JSONResponse(
             status_code=500,
-            content={"detail": "An internal error occurred.", "request_id": request_id_var.get()},
+            content={
+                "detail": "An internal error occurred.",
+                "request_id": getattr(request.state, "request_id", "-"),
+            },
+            headers={"Cache-Control": "private, no-store"},
         )
 
     app.include_router(health.router)

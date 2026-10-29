@@ -9,8 +9,14 @@ from app.application.rag.service import AnswerService
 from app.core.config import get_settings
 from app.domain.interfaces.embedding import Embedder
 from app.domain.interfaces.generation import AnswerGenerator
+from app.domain.interfaces.safety import SafetyGate
 from app.infrastructure.database.session import get_db_session
-from app.infrastructure.factory import build_answer_service, build_embedder, build_generator
+from app.infrastructure.factory import (
+    build_answer_service,
+    build_embedder,
+    build_generator,
+    build_safety_gate,
+)
 
 DbSession = Annotated[Session, Depends(get_db_session)]
 
@@ -26,8 +32,15 @@ def get_generator() -> AnswerGenerator:
     return build_generator(get_settings())
 
 
+@lru_cache
+def get_safety_gate() -> SafetyGate:
+    return build_safety_gate(get_settings())
+
+
 def get_answer_service(session: DbSession) -> AnswerService:
-    return build_answer_service(session, get_settings(), get_embedder(), get_generator())
+    return build_answer_service(
+        session, get_settings(), get_embedder(), get_generator(), get_safety_gate()
+    )
 
 
 def get_chat_service(
@@ -39,4 +52,5 @@ def get_chat_service(
         answers,
         per_minute=settings.rate_limit_per_minute,
         per_hour=settings.rate_limit_per_hour,
+        max_concurrent=settings.max_concurrent_answers,
     )

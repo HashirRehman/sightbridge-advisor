@@ -45,6 +45,7 @@ test("a suggested question is submitted and the cited answer is shown", async ({
   expect(sent).toEqual({
     question: "What is a Delaware Statutory Trust?",
     conversation_id: null,
+    activity_id: expect.stringMatching(/^[0-9a-f-]{36}$/),
   });
 
   const source = answer.getByRole("link", { name: /Revenue Ruling 2004-86/ });
@@ -453,11 +454,17 @@ test("knowledge base reports loading failures and supports refresh and an empty 
   ).toBeVisible();
 });
 
-test("the real proxy allows only the new read-only corpus routes", async ({ page }) => {
+test("the real proxy allows only the new read-only corpus routes", async ({
+  page,
+}) => {
   // APIRequestContext bypasses page.route stubs and exercises the Next.js proxy itself.
   // The test server's upstream is deliberately unavailable; an allowed authenticated
   // request reaches it and returns 502, while unknown paths remain 404.
-  const paths = ["admin/knowledge-base", "admin/documents/irs-rev-rul-2004-86/chunks"];
+  const paths = [
+    "chat/activity/11111111-1111-4111-8111-111111111111",
+    "admin/knowledge-base",
+    "admin/documents/irs-rev-rul-2004-86/chunks",
+  ];
   for (const path of paths) {
     const response = await page.request.get(`/api/proxy/${path}`);
     expect(response.status()).toBe(401);
@@ -467,24 +474,172 @@ test("the real proxy allows only the new read-only corpus routes", async ({ page
   for (const path of paths) {
     const response = await page.request.get(`/api/proxy/${path}`);
     expect(response.status()).toBe(502);
-    expect(await response.json()).toMatchObject({ detail: "The assistant service is unavailable. Please try again." });
+    expect(await response.json()).toMatchObject({
+      detail: "The assistant service is unavailable. Please try again.",
+    });
   }
-  expect((await page.request.post("/api/proxy/admin/knowledge-base")).status()).toBe(404);
-  expect((await page.request.get("/api/proxy/admin/documents/not/a/source/chunks")).status()).toBe(404);
+  expect(
+    (await page.request.post("/api/proxy/admin/knowledge-base")).status(),
+  ).toBe(404);
+  expect(
+    (
+      await page.request.get("/api/proxy/admin/documents/not/a/source/chunks")
+    ).status(),
+  ).toBe(404);
 });
 
-test("a long answer opens at its explanation rather than the bottom of its sources", async ({ page }) => {
+test("a long answer opens at its explanation rather than the bottom of its sources", async ({
+  page,
+}) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   const response = exchange();
-  response.citations[0].quotes = ["This is a long supporting passage. ".repeat(180)];
-  await mockApi(page, { chat: route => json(route, response) });
+  response.citations[0].quotes = [
+    "This is a long supporting passage. ".repeat(180),
+  ];
+  await mockApi(page, { chat: (route) => json(route, response) });
   await signIn(page);
-  await page.getByLabel(/Ask about/).fill("What is a Delaware Statutory Trust?");
+  await page
+    .getByLabel(/Ask about/)
+    .fill("What is a Delaware Statutory Trust?");
   await page.getByRole("button", { name: "Send question" }).click();
   const answer = page.getByRole("article", { name: "Assistant answer" });
   await expect(answer).toBeVisible();
   const pane = page.getByRole("region", { name: "Conversation messages" });
-  await expect.poll(() => pane.evaluate(e => e.scrollTop)).toBeLessThan(100);
-  await expect(answer.locator("p").filter({ hasText: response.explanation[0].text }).first()).toBeInViewport();
-  expect(await pane.evaluate(e => e.scrollHeight > e.clientHeight)).toBe(true);
+  await expect.poll(() => pane.evaluate((e) => e.scrollTop)).toBeLessThan(100);
+  await expect(
+    answer
+      .locator("p")
+      .filter({ hasText: response.explanation[0].text })
+      .first(),
+  ).toBeInViewport();
+  expect(await pane.evaluate((e) => e.scrollHeight > e.clientHeight)).toBe(
+    true,
+  );
+});
+
+test("live activity comes from the server and remains attached to the answer", async ({
+  page,
+}) => {
+  let finish!: () => void;
+  const completed = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  let requestId = "";
+  const step = {
+    id: 0,
+    kind: "model_call",
+    status: "running",
+    started_ms: 50,
+    finished_ms: null,
+    model_id: "deepseek.v3.2",
+    source_count: null,
+  };
+  await mockApi(page, {
+    chat: async (route) => {
+      requestId = route.request().postDataJSON().activity_id;
+      await completed;
+      await json(
+        route,
+        exchange({
+          activity: [{ ...step, status: "completed", finished_ms: 150 }],
+        }),
+      );
+    },
+  });
+  await page.route("**/api/proxy/chat/activity/*", (route) => {
+    expect(route.request().url()).toContain(requestId);
+    return json(route, {
+      id: requestId,
+      steps: [step],
+      finished: false,
+      exchange_id: null,
+    });
+  });
+  await signIn(page);
+  await page.getByLabel(/Ask about/).fill("What is a DST?");
+  await page.getByRole("button", { name: "Send question" }).click();
+  await expect(page.getByText("Amazon Nova Lite", { exact: true })).toHaveCount(
+    0,
+  );
+  await expect(page.getByText("DeepSeek V3.2", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText(
+      "These are service steps, not the model's private reasoning.",
+    ),
+  ).toBeVisible();
+  finish();
+  const answer = page.getByRole("article", { name: "Assistant answer" });
+  await expect(answer).toBeVisible();
+  await answer.getByText("View activity", { exact: true }).click();
+  await expect(
+    answer.getByText("DeepSeek V3.2", { exact: true }),
+  ).toBeVisible();
+  await expect(answer.getByText("0.1s", { exact: true })).toBeVisible();
+});
+
+test("a progress outage does not invent completed steps or lose the answer", async ({
+  page,
+}) => {
+  let finish!: () => void;
+  const completed = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  await mockApi(page, {
+    chat: async (route) => {
+      await completed;
+      await json(route, exchange());
+    },
+  });
+  await page.route("**/api/proxy/chat/activity/*", (route) =>
+    json(route, { detail: "Unavailable" }, 503),
+  );
+  await signIn(page);
+  await page.getByLabel(/Ask about/).fill("What is a DST?");
+  await page.getByRole("button", { name: "Send question" }).click();
+  await expect(
+    page.getByText(
+      "Live activity is temporarily unavailable. Your question is still being processed.",
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Checking supporting quotes", { exact: true }),
+  ).toHaveCount(0);
+  finish();
+  await expect(
+    page.getByRole("article", { name: "Assistant answer" }),
+  ).toBeVisible();
+});
+
+test("network retries reuse the request ID instead of creating a second answer", async ({
+  page,
+}) => {
+  const ids: string[] = [];
+  await mockApi(page, {
+    chat: (route) => {
+      ids.push(route.request().postDataJSON().activity_id);
+      return ids.length === 1 ? route.abort("failed") : json(route, exchange());
+    },
+  });
+  await signIn(page);
+  await page.getByLabel(/Ask about/).fill("What is a DST?");
+  await page.getByRole("button", { name: "Send question" }).click();
+  await page.getByRole("button", { name: "Try again", exact: true }).click();
+  await expect(
+    page.getByRole("article", { name: "Assistant answer" }),
+  ).toBeVisible();
+  expect(ids).toHaveLength(2);
+  expect(ids[0]).toBeTruthy();
+  expect(ids[0]).toBe(ids[1]);
+});
+
+test("the app disables framing and unnecessary browser capabilities", async ({
+  page,
+}) => {
+  const response = await page.request.get("/login");
+  expect(response.headers()["x-frame-options"]).toBe("DENY");
+  expect(response.headers()["x-content-type-options"]).toBe("nosniff");
+  expect(response.headers()["permissions-policy"]).toContain("camera=()");
+  expect(response.headers()["content-security-policy"]).toContain(
+    "frame-ancestors 'none'",
+  );
 });

@@ -3,6 +3,7 @@ import { AlertTriangle, ExternalLink, Info, SearchX, ShieldAlert } from "lucide-
 import { REASON_LABELS, StatusBadge } from "@/components/status-badge";
 import type { Claim, Exchange } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { ActivityView } from "./activity-view";
 
 function citeId(exchangeId: string, n: number) {
   return `cite-${exchangeId}-${n}`;
@@ -43,6 +44,7 @@ export function AnswerCard({ exchange }: { exchange: Exchange }) {
       aria-label="Assistant answer"
       className="bg-card space-y-5 rounded-xl border p-5 shadow-[0_1px_2px_rgba(30,30,36,0.04)] sm:p-6"
     >
+      <ActivityView steps={exchange.activity ?? []} />
       {exchange.status !== "answered" && (
         <div className="flex flex-wrap items-center gap-2">
           <StatusBadge status={exchange.status} />

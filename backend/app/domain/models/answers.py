@@ -18,6 +18,9 @@ class AnswerStatus(StrEnum):
 
 
 class AnswerReason(StrEnum):
+    SAFETY_VIOLATION = "safety_violation"
+    SENSITIVE_DATA = "sensitive_data"
+    SAFETY_CHECK_UNAVAILABLE = "safety_check_unavailable"
     CAPABILITIES = "capabilities"
     PERSONALIZED_ADVICE = "personalized_advice"
     OUT_OF_SCOPE = "out_of_scope"
@@ -54,11 +57,14 @@ class AnswerDraft(BaseModel):
     )
     explanation: list[DraftClaim] = Field(
         default_factory=list,
-        description="1-4 sentences that directly answer the question. Empty if not answerable.",
+        description="A direct plain-language answer. Use 2-4 short sentences for broad definitions "
+        "or comparisons, covering purpose and how it works when supported. Narrow facts may "
+        "be shorter. Empty only if not answerable.",
     )
     key_considerations: list[DraftClaim] = Field(
         default_factory=list,
-        description="0-5 short points an advisor should keep in mind, only if supported.",
+        description="2-3 useful plain-language points when the sources support them; otherwise "
+        "fewer or none. Explain unfamiliar terms and do not repeat the explanation.",
     )
 
 

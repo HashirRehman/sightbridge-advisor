@@ -17,6 +17,7 @@ export type Citation = {
 };
 
 export type Exchange = {
+  activity?: ActivityStep[];
   id: string;
   conversation_id: string;
   question: string;
@@ -28,6 +29,31 @@ export type Exchange = {
   citations: Citation[];
   disclaimer: string;
   created_at: string;
+};
+
+export type ActivityStep = {
+  id: number;
+  kind:
+    | "policy"
+    | "safety"
+    | "embedding"
+    | "retrieval"
+    | "generation"
+    | "model_call"
+    | "verification"
+    | "output_check"
+    | "privacy_check";
+  status: "running" | "completed" | "failed";
+  started_ms: number;
+  finished_ms: number | null;
+  model_id: string | null;
+  source_count: number | null;
+};
+export type AnswerActivity = {
+  id: string;
+  steps: ActivityStep[];
+  finished: boolean;
+  exchange_id: string | null;
 };
 
 export type ConversationSummary = {
@@ -157,14 +183,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   me: () => request<Me>("me"),
-  ask: (question: string, conversationId?: string) =>
+  ask: (question: string, conversationId?: string, activityId?: string) =>
     request<Exchange>("chat", {
       method: "POST",
       body: JSON.stringify({
         question,
         conversation_id: conversationId ?? null,
+        activity_id: activityId ?? null,
       }),
     }),
+  activity: (id: string, signal: AbortSignal) =>
+    request<AnswerActivity>(`chat/activity/${id}`, { signal }),
   conversations: () => request<ConversationSummary[]>("conversations"),
   conversation: (id: string) =>
     request<ConversationDetail>(`conversations/${id}`),

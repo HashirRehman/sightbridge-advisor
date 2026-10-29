@@ -6,6 +6,7 @@ os.environ["EMBEDDING_PROVIDER"] = "local"
 os.environ["LLM_PROVIDER"] = "local"
 # Tests must never reach a real AWS account: dummy credentials, no profile, no IMDS lookup.
 os.environ.pop("AWS_PROFILE", None)
+os.environ.pop("AWS_BEARER_TOKEN_BEDROCK", None)
 os.environ["AWS_ACCESS_KEY_ID"] = "testing"
 os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
 os.environ["AWS_EC2_METADATA_DISABLED"] = "true"

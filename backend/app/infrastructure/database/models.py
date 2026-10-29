@@ -178,7 +178,26 @@ class Exchange(TimestampMixin, Base):
     )
 
 
+class AnswerActivity(TimestampMixin, Base):
+    """Short-lived operational progress. Never contains questions or model reasoning."""
+
+    __tablename__ = "answer_activity"
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(64))
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    steps: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    exchange_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("exchanges.id", ondelete="RESTRICT")
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    __table_args__ = (
+        Index("ix_answer_activity_user_created", "user_id", "created_at"),
+        Index("ix_answer_activity_created", "created_at"),
+    )
+
+
 __all__ = [
+    "AnswerActivity",
     "Base",
     "Conversation",
     "Document",

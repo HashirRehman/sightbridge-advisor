@@ -7,16 +7,33 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AppHeader } from "@/components/app-header";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
-import { api, ApiError, type ConversationSummary, type Exchange } from "@/lib/api";
+import {
+  api,
+  ApiError,
+  type ConversationSummary,
+  type Exchange,
+  type ActivityStep,
+} from "@/lib/api";
 
 import { AnswerCard } from "./answer-card";
+import { ActivityView } from "./activity-view";
 import { Composer } from "./composer";
 import { ConversationList } from "./conversation-list";
 import { SuggestedQuestions } from "./suggested-questions";
 
-const TOPICS = ["1031 exchanges", "Delaware Statutory Trusts", "721 exchanges & UPREITs"];
+const TOPICS = [
+  "1031 exchanges",
+  "Delaware Statutory Trusts",
+  "721 exchanges & UPREITs",
+];
 
 export function ChatView() {
   const router = useRouter();
@@ -28,9 +45,26 @@ export function ChatView() {
   const [listLoading, setListLoading] = useState(true);
   const [threadLoading, setThreadLoading] = useState(false);
   const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
-  const [error, setError] = useState<{ message: string; retry?: string } | null>(null);
+  const [error, setError] = useState<{
+    message: string;
+    retry?: { question: string; activityId: string };
+  } | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [activity, setActivity] = useState<ActivityStep[]>([]);
+  const [activityUnavailable, setActivityUnavailable] = useState(false);
   const messagesRef = useRef<HTMLDivElement>(null);
+  const activeRequest = useRef<{
+    controller: AbortController;
+    timer: number;
+  } | null>(null);
+  useEffect(
+    () => () => {
+      activeRequest.current?.controller.abort();
+      if (activeRequest.current)
+        window.clearInterval(activeRequest.current.timer);
+    },
+    [],
+  );
   // The thread we just created locally — don't refetch it when the URL catches up.
   const localConversation = useRef<string | null>(null);
 
@@ -57,7 +91,12 @@ export function ChatView() {
       .then((c) => setExchanges(c.exchanges))
       .catch((e: unknown) => {
         setExchanges([]);
-        setError({ message: e instanceof ApiError ? e.message : "Couldn't load this conversation." });
+        setError({
+          message:
+            e instanceof ApiError
+              ? e.message
+              : "Couldn't load this conversation.",
+        });
       })
       .finally(() => setThreadLoading(false));
   }, [conversationId]);
@@ -74,25 +113,68 @@ export function ChatView() {
     // Keep the new question and explanation in view, even when its sources are long.
     messages.scrollTo({
       top: latest ? Math.max(0, latest.offsetTop - 24) : 0,
-      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth",
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "instant"
+        : "smooth",
     });
   }, [exchanges.length, pendingQuestion, error]);
 
-  async function ask(question: string) {
+  async function ask(question: string, retryActivityId?: string) {
     setError(null);
     setPendingQuestion(question);
+    setActivity([]);
+    setActivityUnavailable(false);
+    const activityId = retryActivityId ?? crypto.randomUUID();
+    const controller = new AbortController();
+    let polling = false;
+    const poll = async () => {
+      if (polling || controller.signal.aborted) return;
+      polling = true;
+      try {
+        const status = await api.activity(activityId, controller.signal);
+        if (!controller.signal.aborted) {
+          setActivity(status.steps);
+          setActivityUnavailable(false);
+        }
+      } catch (e) {
+        if (
+          !controller.signal.aborted &&
+          !(e instanceof ApiError && e.status === 404)
+        )
+          setActivityUnavailable(true);
+      } finally {
+        polling = false;
+      }
+    };
+    const timer = window.setInterval(poll, 900);
+    activeRequest.current = { controller, timer };
     try {
-      const exchange = await api.ask(question, conversationId ?? localConversation.current ?? undefined);
-      setExchanges((prev) => [...prev, exchange]);
+      const exchange = await api.ask(
+        question,
+        conversationId ?? localConversation.current ?? undefined,
+        activityId,
+      );
+      setExchanges((prev) =>
+        prev.some((item) => item.id === exchange.id)
+          ? prev
+          : [...prev, exchange],
+      );
       if (exchange.conversation_id !== conversationId) {
         localConversation.current = exchange.conversation_id;
         router.replace(`/?c=${exchange.conversation_id}`, { scroll: false });
       }
       refreshConversations();
     } catch (e) {
-      const message = e instanceof ApiError ? e.message : "Something went wrong. Please try again.";
-      setError({ message, retry: question });
+      const message =
+        e instanceof ApiError
+          ? e.message
+          : "Something went wrong. Please try again.";
+      setError({ message, retry: { question, activityId } });
     } finally {
+      window.clearInterval(timer);
+      controller.abort();
+      if (activeRequest.current?.controller === controller)
+        activeRequest.current = null;
       setPendingQuestion(null);
     }
   }
@@ -120,7 +202,12 @@ export function ChatView() {
         leading={
           <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
             <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" className="lg:hidden" aria-label="Conversation history">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="lg:hidden"
+                aria-label="Conversation history"
+              >
                 <History aria-hidden />
               </Button>
             </SheetTrigger>
@@ -134,7 +221,10 @@ export function ChatView() {
         }
       />
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        <aside className="bg-card hidden min-h-0 w-72 shrink-0 overflow-hidden border-r p-4 lg:block" aria-label="Conversations">
+        <aside
+          className="bg-card hidden min-h-0 w-72 shrink-0 overflow-hidden border-r p-4 lg:block"
+          aria-label="Conversations"
+        >
           {history}
         </aside>
 
@@ -154,19 +244,29 @@ export function ChatView() {
                       What would you like to understand today?
                     </h1>
                     <p className="text-muted-foreground max-w-2xl leading-relaxed">
-                      Educational answers grounded in IRS, SEC and FINRA material and other vetted
-                      public sources, with the exact passages cited. No personalised tax, legal or
-                      investment advice.
+                      Educational answers grounded in IRS, SEC and FINRA
+                      material and other vetted public sources, with the exact
+                      passages cited. No personalised tax, legal or investment
+                      advice.
                     </p>
-                    <ul className="flex flex-wrap gap-2 pt-1" aria-label="Supported topics">
+                    <ul
+                      className="flex flex-wrap gap-2 pt-1"
+                      aria-label="Supported topics"
+                    >
                       {TOPICS.map((t) => (
-                        <li key={t} className="bg-sand/60 rounded-full px-3 py-1 text-xs font-medium">
+                        <li
+                          key={t}
+                          className="bg-sand/60 rounded-full px-3 py-1 text-xs font-medium"
+                        >
                           {t}
                         </li>
                       ))}
                     </ul>
                   </div>
-                  <SuggestedQuestions onSelect={ask} disabled={pendingQuestion !== null} />
+                  <SuggestedQuestions
+                    onSelect={ask}
+                    disabled={pendingQuestion !== null}
+                  />
                 </section>
               )}
 
@@ -187,10 +287,16 @@ export function ChatView() {
               {pendingQuestion && (
                 <div data-pending-question className="space-y-3">
                   <UserQuestion text={pendingQuestion} />
-                  <div className="bg-card space-y-3 rounded-xl border p-5" role="status" aria-live="polite">
-                    <p className="text-muted-foreground text-sm">
-                      Searching approved sources and checking citations…
-                    </p>
+                  <div
+                    className="bg-card space-y-3 rounded-xl border p-5"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <ActivityView
+                      steps={activity}
+                      pending
+                      unavailable={activityUnavailable}
+                    />
                     <Skeleton className="h-4 w-11/12" />
                     <Skeleton className="h-4 w-4/5" />
                     <Skeleton className="h-4 w-2/3" />
@@ -207,7 +313,10 @@ export function ChatView() {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => error.retry && ask(error.retry)}
+                        onClick={() =>
+                          error.retry &&
+                          ask(error.retry.question, error.retry.activityId)
+                        }
                       >
                         <RotateCcw aria-hidden /> Try again
                       </Button>

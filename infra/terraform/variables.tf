@@ -73,6 +73,11 @@ variable "embedding_model_id" {
   default = "amazon.titan-embed-text-v2:0"
 }
 
+variable "safety_model_id" {
+  type    = string
+  default = "apac.amazon.nova-lite-v1:0"
+}
+
 # --- Backend ---
 variable "bedrock_api_key_ssm_parameter" {
   description = "Pre-existing SecureString parameter name; Terraform never reads its value."

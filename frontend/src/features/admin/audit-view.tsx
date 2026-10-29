@@ -43,6 +43,8 @@ import {
 } from "@/components/ui/table";
 import { api, ApiError, type AdminExchange, type AuditPage } from "@/lib/api";
 
+import { ActivityView } from "../chat/activity-view";
+
 import { KnowledgeBasePanel } from "./knowledge-base-panel";
 
 const PAGE_SIZE = 25;
@@ -481,6 +483,7 @@ function ExchangeDetail({
                   </ol>
                 </section>
               )}
+              <ActivityView steps={exchange.activity ?? []} />
               <section className="space-y-2">
                 <h3 className="text-sm font-semibold">Diagnostics</h3>
                 <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
@@ -489,7 +492,7 @@ function ExchangeDetail({
                       ["Model", exchange.model_id ?? "—"],
                       ["Latency", `${exchange.latency_ms} ms`],
                       [
-                        "Tokens (in / out)",
+                        "Answer tokens (in / out)",
                         exchange.input_tokens === null
                           ? "—"
                           : `${exchange.input_tokens} / ${exchange.output_tokens}`,

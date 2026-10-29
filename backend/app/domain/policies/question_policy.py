@@ -8,6 +8,8 @@ import re
 from dataclasses import dataclass
 from enum import StrEnum
 
+from app.domain.policies.safety import normalise_for_checks
+
 
 class PolicyOutcome(StrEnum):
     ALLOW = "allow"
@@ -117,6 +119,7 @@ def _first_match(rules: list[tuple[str, re.Pattern[str]]], text: str) -> str | N
 
 
 def evaluate_question(question: str) -> PolicyDecision:
+    question = normalise_for_checks(question)
     in_scope = bool(_IN_SCOPE.search(question))
 
     if rule := _first_match(_INJECTION, question):
