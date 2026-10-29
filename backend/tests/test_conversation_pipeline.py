@@ -253,6 +253,21 @@ def test_simplification_that_copies_the_previous_answer_is_rewritten_once() -> N
     assert "repeated the previous answer" in pipeline.generator.calls[1][0]
 
 
+def test_simplification_with_misquoted_evidence_gets_one_regeneration() -> None:
+    misquoted = draft(claim("You get 45 days to pick the new property.", ("P1", "45 days to pick")))
+    simpler = draft(
+        claim(
+            "You get 45 days to pick the new property.",
+            ("P1", "must be identified within 45 days after the date you transfer"),
+        )
+    )
+    pipeline = Pipeline(generator=Generator([misquoted, simpler]))
+    answer = pipeline.service.answer("make it shorter", history=HISTORY, evidence=[_retrieved()])
+    assert answer.status is AnswerStatus.ANSWERED
+    assert pipeline.calls() == (0, 0, 2, 1)
+    assert "word for word" in pipeline.generator.calls[1][0]
+
+
 def test_source_followup_is_answered_from_saved_citations_without_models() -> None:
     evidence = replace(
         _retrieved(), content=IDENTIFICATION_TEXT.replace(" within 45", "\nwithin 45")
@@ -290,14 +305,37 @@ def test_new_question_in_a_thread_does_not_reuse_previous_evidence() -> None:
     assert pipeline.calls() == (1, 1, 1, 1)
 
 
-def test_review_rejecting_one_claim_publishes_the_rest_without_regenerating() -> None:
-    reviewer = Reviewer([ResponseReview(SafetyVerdict.ALLOW, failed_claim_indexes=(1,))])
-    pipeline = Pipeline(generator=Generator([DEADLINES]), reviewer=reviewer)
+def test_review_rejecting_a_minor_claim_publishes_the_rest_without_regenerating() -> None:
+    fuller = DEADLINES.model_copy(
+        update={
+            "explanation": [
+                *DEADLINES.explanation,
+                claim(
+                    "Both periods start on the day you transfer the old property.",
+                    ("P1", "within 45 days after the date you transfer"),
+                ),
+            ]
+        }
+    )
+    reviewer = Reviewer([ResponseReview(SafetyVerdict.ALLOW, failed_claim_indexes=(2,))])
+    pipeline = Pipeline(generator=Generator([fuller]), reviewer=reviewer)
     answer = pipeline.service.answer("What is a 1031 exchange?")
-    assert [c.text for c in answer.explanation] == [DEADLINES.explanation[0].text]
-    assert answer.dropped_claims == 1
-    assert [c.number for c in answer.citations] == [1]
+    assert [c.text for c in answer.explanation] == [c.text for c in DEADLINES.explanation]
+    assert answer.dropped_claims == 1 and [c.number for c in answer.citations] == [1]
     assert pipeline.calls() == (0, 1, 1, 1)
+
+
+def test_review_gutting_the_explanation_gets_one_repair_instead_of_fragments() -> None:
+    reviewer = Reviewer(
+        [
+            ResponseReview(SafetyVerdict.ALLOW, failed_claim_indexes=(0,), issue="scope"),
+            ResponseReview(SafetyVerdict.ALLOW),
+        ]
+    )
+    pipeline = Pipeline(generator=Generator([DEADLINES, DEADLINES]), reviewer=reviewer)
+    answer = pipeline.service.answer("What is a 1031 exchange?")
+    assert len(answer.explanation) == 2  # the repaired draft, not the one-claim remainder
+    assert pipeline.calls() == (0, 1, 2, 2)
 
 
 def test_review_rejecting_every_claim_gets_one_repair_then_stays_unsupported() -> None:

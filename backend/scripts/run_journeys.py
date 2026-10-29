@@ -41,8 +41,10 @@ def turn_checks(turn: dict[str, Any], exchange: Exchange, previous: str | None) 
     for word in turn.get("mentions", []):
         if word.casefold() not in body.casefold():
             failures.append(f"missing {word!r}")
+    # Refusal and unsupported notices are fixed text; only generated answers are checked.
+    generated = body if exchange.status == "answered" else ""
     for word in turn.get("not_mentions", []):
-        if re.search(rf"\b{re.escape(word)}\b", body):
+        if re.search(rf"\b{re.escape(word)}\b", generated):
             failures.append(f"unexpected {word!r}")
     if turn.get("differs_from_previous") and previous is not None:
         ratio = SequenceMatcher(None, body.casefold(), previous.casefold()).ratio()

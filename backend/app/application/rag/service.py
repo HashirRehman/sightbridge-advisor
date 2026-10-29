@@ -6,8 +6,9 @@ A normal factual turn costs one planning call, one generation and one review, pl
 embedding. Clear factual templates and "make it simpler" skip planning; capability questions
 and source follow-ups need no model at all. Extra calls happen only after a failure: the
 fallback model on an error, one search refinement when nothing is supported, one rewrite
-when a simplification copies the previous answer, and one regeneration when the review
-rejects every explanation claim. Every branch returns an AssistantAnswer with a disclaimer.
+when a simplification copies the previous answer or misquotes its evidence, and one
+regeneration when the review rejects the core of the explanation. Every branch returns an
+AssistantAnswer with a disclaimer.
 """
 
 import logging
@@ -19,6 +20,7 @@ from app.application.rag.activity import activity_step
 from app.application.rag.budget import answer_budget
 from app.application.rag.prompts import (
     OVERVIEW_NOTE,
+    QUOTE_NOTE,
     REWRITE_COPY_NOTE,
     answer_body,
     repair_note,
@@ -379,7 +381,14 @@ class AnswerService:
                 verification = verify_answer(result.draft, labeled)
 
             if not (result.draft.answerable and verification.explanation):
-                if final or refined or not self._refinable(plan):
+                if final:
+                    break
+                if plan.action in ("rewrite", "cite") and result.draft.answerable:
+                    # Reused evidence has no search to refine; a draft whose quotes all
+                    # failed verification gets one regeneration instead.
+                    task += QUOTE_NOTE
+                    continue
+                if refined or not self._refinable(plan):
                     break
                 # Nothing supported in the first passages: one bounded search refinement.
                 refined = True
@@ -417,10 +426,15 @@ class AnswerService:
             if not review.failed_claim_indexes:
                 break
             rejected = _claim_texts(verification, review.failed_claim_indexes)
-            verification = _without_claims(result.draft, verification, rejected, labeled)
-            if verification.explanation:
-                # Publish only the claims the review supports, instead of paying for a
-                # full regeneration and a second review.
+            trimmed = _without_claims(result.draft, verification, rejected, labeled)
+            removed = len(verification.explanation) - len(trimmed.explanation)
+            verification = trimmed
+            if trimmed.explanation and (
+                final or removed == 0 or (removed == 1 and len(trimmed.explanation) >= 2)
+            ):
+                # The direct answer is still intact: publish the supported claims instead
+                # of paying for a regeneration and a second review. A gutted explanation
+                # reads as fragments, so that case gets the one repair attempt below.
                 break
             if final:
                 return _built(
