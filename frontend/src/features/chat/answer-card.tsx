@@ -42,7 +42,7 @@ export function AnswerCard({ exchange }: { exchange: Exchange }) {
   return (
     <article
       aria-label="Assistant answer"
-      className="bg-card space-y-5 rounded-xl border p-5 shadow-[0_1px_2px_rgba(30,30,36,0.04)] sm:p-6"
+      className="bg-card space-y-5 rounded-xl border p-5 shadow-xs sm:p-6"
     >
       <ActivityView steps={exchange.activity ?? []} />
       {exchange.status !== "answered" && (

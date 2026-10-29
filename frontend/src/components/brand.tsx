@@ -15,7 +15,7 @@ export function Wordmark({ className, inverted = false }: { className?: string; 
       <span
         className={cn(
           "text-[0.8rem] font-medium tracking-wide",
-          inverted ? "text-sand" : "text-muted-foreground",
+          inverted ? "text-panel-accent" : "text-muted-foreground",
         )}
       >
         Advisor Intelligence

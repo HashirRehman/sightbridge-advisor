@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRight, ExternalLink, RefreshCw } from "lucide-react";
+import { ArrowUpRight, ExternalLink } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -25,7 +25,6 @@ const date = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
 export function KnowledgeBasePanel() {
   const [data, setData] = useState<KnowledgeBase | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [reload, setReload] = useState(0);
   const [selected, setSelected] = useState<IngestedDocument | null>(null);
   useEffect(() => {
     let cancelled = false;
@@ -37,31 +36,27 @@ export function KnowledgeBasePanel() {
       })
       .catch(() => {
         if (!cancelled)
-          setError("Couldn't load the ingested documents. Please try again.");
+          setError(
+            "Couldn't load the ingested documents. Reload the page to try again.",
+          );
       });
     return () => {
       cancelled = true;
     };
-  }, [reload]);
+  }, []);
 
   return (
-    <section className="space-y-6" aria-label="Knowledge base">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold">
-            Ingested documents & embeddings
-          </h2>
-          <p className="text-muted-foreground mt-1 text-sm">
-            The sources currently stored for answering questions.
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setReload((v) => v + 1)}
-        >
-          <RefreshCw aria-hidden /> Refresh
-        </Button>
+    <section
+      className="space-y-6 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col"
+      aria-label="Knowledge base"
+    >
+      <div>
+        <h2 className="text-lg font-semibold">
+          Ingested documents & embeddings
+        </h2>
+        <p className="text-muted-foreground mt-1 text-sm">
+          The sources currently stored for answering questions.
+        </p>
       </div>
       {error && (
         <Alert variant="destructive" role="alert">
@@ -126,58 +121,70 @@ export function KnowledgeBasePanel() {
               No documents have been ingested yet.
             </p>
           ) : (
-            <ul
-              className="grid gap-3 md:grid-cols-2"
-              aria-label="Ingested documents"
+            // The summary above stays in view; only the documents scroll (desktop). The list
+            // keeps a usable minimum height, so very short screens scroll the page instead.
+            // `relative` keeps screen-reader-only text inside the scroll area; focusable so
+            // keyboard users can scroll it too.
+            <div
+              tabIndex={0}
+              aria-label="Ingested documents, scrollable"
+              className="lg:relative lg:-mx-1 lg:min-h-80 lg:flex-1 lg:overflow-y-auto lg:px-1 lg:pb-1"
             >
-              {data.documents.map((doc) => (
-                <li
-                  key={doc.id}
-                  className="bg-card flex min-w-0 flex-col gap-3 rounded-xl border p-4"
-                >
-                  <div className="min-w-0">
-                    <h3 className="font-semibold leading-snug">{doc.title}</h3>
-                    <p className="text-muted-foreground mt-1 text-xs">
-                      {doc.publisher} · {doc.document_type.toUpperCase()}
+              <ul
+                className="grid gap-3 md:grid-cols-2"
+                aria-label="Ingested documents"
+              >
+                {data.documents.map((doc) => (
+                  <li
+                    key={doc.id}
+                    className="bg-card flex min-w-0 flex-col gap-3 rounded-xl border p-4"
+                  >
+                    <div className="min-w-0">
+                      <h3 className="font-semibold leading-snug">
+                        {doc.title}
+                      </h3>
+                      <p className="text-muted-foreground mt-1 text-xs">
+                        {doc.publisher} · {doc.document_type.toUpperCase()}
+                      </p>
+                    </div>
+                    <p className="text-muted-foreground text-sm">
+                      {doc.chunk_count} embedded chunks · Updated{" "}
+                      {date.format(new Date(doc.updated_at))}
                     </p>
-                  </div>
-                  <p className="text-muted-foreground text-sm">
-                    {doc.chunk_count} embedded chunks · Updated{" "}
-                    {date.format(new Date(doc.updated_at))}
-                  </p>
-                  {doc.topics.length > 0 && (
-                    <p className="text-muted-foreground text-xs">
-                      Topics: {doc.topics.join(", ")}
-                    </p>
-                  )}
-                  <div className="mt-auto flex flex-wrap items-center gap-4">
-                    <button
-                      type="button"
-                      className="inline-flex cursor-pointer items-center gap-1 text-sm font-medium underline underline-offset-4"
-                      onClick={() => setSelected(doc)}
-                      aria-haspopup="dialog"
-                    >
-                      View chunks & embeddings{" "}
-                      <ArrowUpRight className="size-4" aria-hidden />
-                      <span className="sr-only"> for {doc.title}</span>
-                    </button>
-                    <a
-                      href={doc.source_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-sm underline underline-offset-4"
-                    >
-                      Original source{" "}
-                      <ExternalLink className="size-3.5" aria-hidden />
-                      <span className="sr-only">
-                        {" "}
-                        for {doc.title} (opens in a new tab)
-                      </span>
-                    </a>
-                  </div>
-                </li>
-              ))}
-            </ul>
+                    {doc.topics.length > 0 && (
+                      <p className="text-muted-foreground text-xs">
+                        Topics: {doc.topics.join(", ")}
+                      </p>
+                    )}
+                    <div className="mt-auto flex flex-wrap items-center gap-4">
+                      <button
+                        type="button"
+                        className="inline-flex cursor-pointer items-center gap-1 text-sm font-medium underline underline-offset-4"
+                        onClick={() => setSelected(doc)}
+                        aria-haspopup="dialog"
+                      >
+                        View chunks & embeddings{" "}
+                        <ArrowUpRight className="size-4" aria-hidden />
+                        <span className="sr-only"> for {doc.title}</span>
+                      </button>
+                      <a
+                        href={doc.source_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-sm underline underline-offset-4"
+                      >
+                        Original source{" "}
+                        <ExternalLink className="size-3.5" aria-hidden />
+                        <span className="sr-only">
+                          {" "}
+                          for {doc.title} (opens in a new tab)
+                        </span>
+                      </a>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
         </>
       )}
@@ -187,7 +194,7 @@ export function KnowledgeBasePanel() {
           if (!open) setSelected(null);
         }}
       >
-        <SheetContent className="w-full overflow-y-auto sm:max-w-2xl">
+        <SheetContent className="overflow-y-auto data-[side=right]:w-full data-[side=right]:sm:max-w-2xl">
           {selected && <ChunkDetails key={selected.id} document={selected} />}
         </SheetContent>
       </Sheet>

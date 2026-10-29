@@ -112,6 +112,8 @@ class ChatService:
         decision = evaluate_question(question)
         if local_safety_verdict(question) is not SafetyVerdict.ALLOW or decision.outcome in (
             PolicyOutcome.PROMPT_INJECTION,
+            PolicyOutcome.PERSONALIZED_ADVICE,
+            PolicyOutcome.OUT_OF_SCOPE,
         ):
             return self.ask(principal, question, conversation_id, request_id, activity_id)
         _, activity = self.reserve(principal, question, conversation_id, activity_id)

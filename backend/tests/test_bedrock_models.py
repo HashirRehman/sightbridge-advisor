@@ -167,9 +167,11 @@ def _review(client: ScriptedClient, claims: int = 1) -> Any:
     )
 
 
-def reviewed(*checks: tuple[bool, str], safety: str = "allow") -> dict[str, Any]:
+def reviewed(
+    *checks: tuple[bool, str], safety: str = "allow", request: str = "allow"
+) -> dict[str, Any]:
     return {
-        "request_safety": "allow",
+        "request_safety": request,
         "response_safety": safety,
         "checks": [
             {"index": i, "supported": s, "issue": issue} for i, (s, issue) in enumerate(checks)
@@ -189,6 +191,11 @@ def test_review_reports_failed_claims_and_unsafe_responses() -> None:
         ScriptedClient("ReviewedResponse", reviewed((True, "none"), safety="misconduct"))
     )
     assert unsafe.safety is SafetyVerdict.MISCONDUCT
+    doubted = _review(
+        ScriptedClient("ReviewedResponse", reviewed((True, "none"), request="misconduct"))
+    )
+    assert doubted.safety is SafetyVerdict.ALLOW  # the answer itself is fine
+    assert doubted.request_safety is SafetyVerdict.MISCONDUCT
 
 
 def test_incomplete_review_escalates_once_and_never_accepts_unchecked_claims() -> None:

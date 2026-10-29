@@ -147,22 +147,33 @@ def test_policy_refusals_never_reach_retrieval_or_model(
     assert answer.disclaimer == DISCLAIMER
 
 
-def test_personalised_request_is_refused_but_offers_general_education() -> None:
-    generator = FakeGenerator(GROUNDED)
-
-    answer = _service(generator).answer("Should I invest my $500,000 in a DST?")
-
+def test_request_for_a_personal_decision_is_refused_without_any_model_call() -> None:
+    embedder, generator = FakeEmbedder(), FakeGenerator(GROUNDED)
+    answer = _service(generator, embedder=embedder).answer("Should I invest my $500,000 in a DST?")
     assert (answer.status, answer.reason) == (
         AnswerStatus.REFUSED,
         AnswerReason.PERSONALIZED_ADVICE,
     )
     assert answer.notice and answer.notice.startswith("I can't make recommendations")
+    assert "general rules" in answer.notice  # points to what it can help with
+    assert embedder.calls == 0 and generator.calls == []
+
+
+def test_personally_framed_general_question_gets_education_alongside_the_refusal() -> None:
+    generator = FakeGenerator(GROUNDED)
+    answer = _service(generator).answer("Should I report the exchange on Form 8824?")
+    assert (answer.status, answer.reason) == (
+        AnswerStatus.REFUSED,
+        AnswerReason.PERSONALIZED_ADVICE,
+    )
     assert generator.calls[0][2] is GenerationMode.GENERAL_EDUCATION
     assert answer.explanation and answer.citations
 
 
 def test_personalised_request_still_refused_when_model_fails() -> None:
-    answer = _service(FakeGenerator(GenerationError("timeout"))).answer("Should I buy a DST?")
+    answer = _service(FakeGenerator(GenerationError("timeout"))).answer(
+        "Should I report the exchange on Form 8824?"
+    )
     assert (answer.status, answer.reason) == (
         AnswerStatus.REFUSED,
         AnswerReason.PERSONALIZED_ADVICE,

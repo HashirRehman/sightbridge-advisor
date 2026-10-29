@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Libre_Franklin, Manrope } from "next/font/google";
+import { ThemeProvider } from "@/components/theme-toggle";
+
 import "./globals.css";
 
 const body = Manrope({ variable: "--font-body", subsets: ["latin"], display: "swap" });
@@ -13,8 +15,11 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${body.variable} ${heading.variable}`}>
-      <body className="antialiased">{children}</body>
+    // next-themes sets the theme class before paint, so the server markup differs on purpose.
+    <html lang="en" className={`${body.variable} ${heading.variable}`} suppressHydrationWarning>
+      <body className="antialiased">
+        <ThemeProvider>{children}</ThemeProvider>
+      </body>
     </html>
   );
 }

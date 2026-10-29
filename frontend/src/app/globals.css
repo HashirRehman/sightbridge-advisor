@@ -11,6 +11,8 @@
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
   --font-heading: var(--font-heading);
   --color-sand: var(--sand);
+  --color-panel: var(--panel);
+  --color-panel-accent: var(--panel-accent);
   --color-sand-strong: var(--sand-strong);
   --color-mist: var(--mist);
   --color-success: var(--success);
@@ -55,13 +57,17 @@
 
 /*
  * Sightbridge-inspired palette, taken from the public sightbridge.com stylesheet:
- * ink #1e1e24, sand #e9e2d6, mist #edeff7. Light theme only.
+ * ink #1e1e24, sand #e9e2d6, mist #edeff7. The dark theme keeps the same warm ink/sand
+ * character with light text on near-black surfaces.
  */
 :root {
   --ink: #1e1e24;
   --sand: #e9e2d6;
   --sand-strong: #d9cfbd;
   --mist: #edeff7;
+  /* Brand panel (login): ink and sand in both themes. */
+  --panel: #1e1e24;
+  --panel-accent: #e9e2d6;
 
   --background: #faf9f6;
   --foreground: var(--ink);
@@ -97,6 +103,49 @@
   --sidebar-accent-foreground: var(--ink);
   --sidebar-border: #e2ded5;
   --sidebar-ring: var(--ink);
+}
+
+.dark {
+  --ink: #ecebe6;
+  --sand: #3b362d;
+  --sand-strong: #4b4438;
+  --mist: #262833;
+  --panel: #1b1b21;
+  --panel-accent: #e9e2d6;
+
+  --background: #121216;
+  --foreground: #ecebe6;
+  --card: #1b1b21;
+  --card-foreground: #ecebe6;
+  --popover: #1f1f26;
+  --popover-foreground: #ecebe6;
+  --primary: #ecebe6;
+  --primary-foreground: #16161b;
+  --secondary: #262833;
+  --secondary-foreground: #ecebe6;
+  --muted: #23232b;
+  --muted-foreground: #a4a6b1;
+  --accent: #3b362d;
+  --accent-foreground: #ecebe6;
+  --destructive: #f2786c;
+  --success: #4cbf8c;
+  --warning: #e3b45a;
+  --border: #2f2f38;
+  --input: #3a3a45;
+  --ring: #ecebe6;
+  --chart-1: #ecebe6;
+  --chart-2: #9da2b3;
+  --chart-3: #4b4438;
+  --chart-4: #4cbf8c;
+  --chart-5: #6e7180;
+  --sidebar: #1b1b21;
+  --sidebar-foreground: #ecebe6;
+  --sidebar-primary: #ecebe6;
+  --sidebar-primary-foreground: #16161b;
+  --sidebar-accent: #262833;
+  --sidebar-accent-foreground: #ecebe6;
+  --sidebar-border: #2f2f38;
+  --sidebar-ring: #ecebe6;
 }
 
 @layer base {

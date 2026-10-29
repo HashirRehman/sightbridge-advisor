@@ -1,3 +1,4 @@
+import uuid
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Query
@@ -7,7 +8,12 @@ from app.api.dependencies.services import DbSession
 from app.core.config import get_settings
 from app.infrastructure.repositories.chat import AdminExchangeFilter, ChatRepository
 from app.infrastructure.repositories.knowledge_base import KnowledgeBaseRepository
-from app.schemas.chat import AdminExchangeOut, AdminExchangePageOut, AuditSummaryOut
+from app.schemas.chat import (
+    AdminConversationOut,
+    AdminExchangeOut,
+    AdminExchangePageOut,
+    AuditSummaryOut,
+)
 from app.schemas.knowledge_base import (
     ChunkOut,
     DocumentChunksOut,
@@ -145,3 +151,15 @@ def list_exchanges(
             failed=counts.get("failed", 0),
         ),
     )
+
+
+@router.get("/conversations/{conversation_id}", response_model=AdminConversationOut)
+def conversation(
+    conversation_id: uuid.UUID, _: AdminUser, session: DbSession
+) -> AdminConversationOut:
+    """Read-only view of any thread, so an audited answer can be read in its context."""
+    repo = ChatRepository(session)
+    found = repo.get_conversation_for_admin(conversation_id)
+    if found is None:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+    return AdminConversationOut.from_admin_model(found, repo.list_exchanges(found.id))

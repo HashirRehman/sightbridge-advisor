@@ -60,6 +60,10 @@ ALLOW, PERSONAL, SCOPE, INJECT = (
         ("Which DST sponsor should we choose?", PERSONAL),
         ("Am I an accredited investor?", PERSONAL),
         ("I sold a duplex for $1.2M, what are my options?", PERSONAL),
+        ("Should I invest 1M dollars?", PERSONAL),
+        # General questions phrased about the asker: answered as education, never advice.
+        ("Should I report the exchange on Form 8824?", PolicyOutcome.PERSONAL_FRAMING),
+        ("What should I know about DST risks?", PolicyOutcome.PERSONAL_FRAMING),
         # Out of scope (no 1031/DST/721 vocabulary + an excluded topic).
         ("How do opportunity zones defer capital gains?", SCOPE),
         ("Is bitcoin a good hedge against inflation?", SCOPE),

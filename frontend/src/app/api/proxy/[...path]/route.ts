@@ -14,6 +14,7 @@ const ALLOWED: Array<{ method: string; pattern: RegExp }> = [
   { method: "GET", pattern: /^conversations\/[0-9a-f-]{36}$/ },
   { method: "GET", pattern: /^admin\/exchanges$/ },
   { method: "GET", pattern: /^admin\/knowledge-base$/ },
+  { method: "GET", pattern: /^admin\/conversations\/[0-9a-f-]{36}$/ },
   {
     method: "GET",
     pattern: /^admin\/documents\/[a-zA-Z0-9_-]{1,100}\/chunks$/,

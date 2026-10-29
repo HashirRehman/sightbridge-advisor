@@ -84,6 +84,8 @@ export type ConversationDetail = {
   exchanges: Exchange[];
 };
 
+export type AdminConversation = ConversationDetail & { user_email: string };
+
 export type Me = { user_id: string; email: string; is_admin: boolean };
 
 export type AdminExchange = Exchange & {
@@ -244,6 +246,8 @@ export const api = {
   auditLog: (params: URLSearchParams) =>
     request<AuditPage>(`admin/exchanges?${params}`),
   knowledgeBase: () => request<KnowledgeBase>("admin/knowledge-base"),
+  adminConversation: (id: string) =>
+    request<AdminConversation>(`admin/conversations/${id}`),
   documentChunks: (id: string, offset = 0) =>
     request<DocumentChunks>(
       `admin/documents/${encodeURIComponent(id)}/chunks?offset=${offset}&limit=10`,

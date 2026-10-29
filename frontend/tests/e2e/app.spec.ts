@@ -200,11 +200,110 @@ test("admins can review and filter the audit log", async ({ page }) => {
 
   const question = page.getByRole("button", {
     name: "What is a Delaware Statutory Trust?",
+    exact: true,
   });
   await expect(question.locator("svg")).toBeVisible();
   await expect(question).toHaveAttribute("aria-haspopup", "dialog");
   await question.click();
   await expect(page.getByText("Answer shown to the user")).toBeVisible();
+});
+
+test("admins read the full conversation inside the drawer, from the table or the details", async ({
+  page,
+}) => {
+  const audited = {
+    ...exchange(),
+    user_id: "u1",
+    user_email: "advisor@e2e.test",
+    answer_text: "…",
+    model_id: "m",
+    input_tokens: 1,
+    output_tokens: 1,
+    latency_ms: 900,
+    retrieved_passages: 6,
+    dropped_claims: 0,
+    request_id: "r1",
+  };
+  const earlier = exchange({ question: "How does a 1031 exchange work?" });
+  await mockApi(page, {
+    isAdmin: true,
+    admin: (route) =>
+      json(route, {
+        items: [audited],
+        total: 1,
+        limit: 25,
+        offset: 0,
+        summary: {
+          total: 1,
+          answered: 1,
+          refused: 0,
+          unsupported: 0,
+          failed: 0,
+        },
+      }),
+  });
+  await page.route(
+    `**/api/proxy/admin/conversations/${audited.conversation_id}`,
+    (route) =>
+      json(route, {
+        id: audited.conversation_id,
+        title: "How does a 1031 exchange work?",
+        user_email: "advisor@e2e.test",
+        exchanges: [earlier, audited],
+      }),
+  );
+  await signIn(page, ADMIN);
+  await page.goto("/admin");
+
+  // The chat icon opens the drawer straight on the conversation; the page stays put.
+  await page.getByRole("button", { name: /Open the conversation for/ }).click();
+  const drawer = page.getByRole("dialog");
+  await expect(
+    drawer.getByRole("tab", { name: "Conversation" }),
+  ).toHaveAttribute("aria-selected", "true");
+  await expect(
+    drawer.getByRole("article", { name: "Assistant answer" }),
+  ).toHaveCount(2);
+  await expect(drawer.locator('[aria-current="true"]')).toContainText(
+    audited.question,
+  );
+  await expect(drawer.getByRole("textbox")).toHaveCount(0); // read-only
+  expect(new URL(page.url()).pathname).toBe("/admin");
+
+  // The switcher moves between the details and the conversation.
+  await drawer.getByRole("tab", { name: "Details" }).click();
+  await expect(drawer.getByText("Answer shown to the user")).toBeVisible();
+  await drawer.getByRole("tab", { name: "Conversation" }).click();
+  await expect(
+    drawer.getByRole("article", { name: "Assistant answer" }),
+  ).toHaveCount(2);
+});
+
+test("the theme toggle switches to dark mode and remembers the choice", async ({
+  page,
+}) => {
+  await mockApi(page);
+  await signIn(page);
+  const html = page.locator("html");
+  const toggle = page.getByRole("button", {
+    name: /Switch to (dark|light) mode/,
+  });
+  if ((await html.getAttribute("class"))?.includes("dark"))
+    await toggle.click();
+  await expect(html).not.toHaveClass(/\bdark\b/);
+
+  await page.getByRole("button", { name: "Switch to dark mode" }).click();
+  await expect(html).toHaveClass(/\bdark\b/);
+  const background = await page.evaluate(
+    () => getComputedStyle(document.body).backgroundColor,
+  );
+  expect(background).toBe("rgb(18, 18, 22)");
+
+  await page.reload();
+  await expect(html).toHaveClass(/\bdark\b/);
+  await expect(
+    page.getByRole("button", { name: "Switch to light mode" }),
+  ).toBeVisible();
 });
 
 test("capabilities answers show help without a refusal or fabricated sources", async ({
@@ -406,7 +505,76 @@ test("admins can inspect ingested documents, passages and embedding metadata", a
   ).toBe(false);
 });
 
-test("knowledge base reports loading failures and supports refresh and an empty corpus", async ({
+test("on desktop only the document list scrolls, keeping the corpus summary in view", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "desktop",
+    "phones scroll the whole page by design",
+  );
+  await mockApi(page, {
+    isAdmin: true,
+    admin: (route) =>
+      json(route, {
+        items: [],
+        total: 0,
+        limit: 25,
+        offset: 0,
+        summary: {
+          total: 0,
+          answered: 0,
+          refused: 0,
+          unsupported: 0,
+          failed: 0,
+        },
+      }),
+  });
+  const embedding = { model_id: "titan", dimensions: 1024, chunk_count: 284 };
+  await page.route("**/api/proxy/admin/knowledge-base", (route) =>
+    json(route, {
+      document_count: 13,
+      chunk_count: 284,
+      query_embedding_model: "titan",
+      answer_model: "deepseek.v3.2",
+      fallback_answer_model: null,
+      embeddings: [embedding],
+      documents: Array.from({ length: 13 }, (_, i) => ({
+        id: `doc-${i}`,
+        title: `Source document ${i}`,
+        publisher: "IRS",
+        document_type: "html",
+        source_url: "https://www.irs.gov/example",
+        topics: ["1031"],
+        fetched_at: "2026-10-28T00:00:00Z",
+        updated_at: "2026-10-28T00:00:00Z",
+        chunk_count: 20,
+        embeddings: [embedding],
+      })),
+    }),
+  );
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await signIn(page, ADMIN);
+  await page.goto("/admin");
+  await page.getByRole("tab", { name: "Knowledge base" }).click();
+  const list = page.getByLabel("Ingested documents, scrollable");
+  await expect(list.getByRole("listitem")).toHaveCount(13);
+
+  const pageScrolls = await page.evaluate(
+    () => document.documentElement.scrollHeight > window.innerHeight,
+  );
+  expect(pageScrolls).toBe(false);
+  expect(await list.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(
+    true,
+  );
+  await list.hover();
+  await page.mouse.wheel(0, 2000);
+  await expect(page.getByText("Embedding models")).toBeInViewport();
+  await expect(
+    page.getByRole("heading", { name: "Source document 12" }),
+  ).toBeInViewport();
+});
+
+test("knowledge base reports loading failures, recovers on return and shows an empty corpus", async ({
   page,
 }) => {
   await mockApi(page, {
@@ -446,7 +614,8 @@ test("knowledge base reports loading failures and supports refresh and an empty 
   await expect(
     page.getByRole("region", { name: "Knowledge base" }).getByRole("alert"),
   ).toContainText("Couldn't load the ingested documents");
-  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await page.getByRole("tab", { name: "Question history" }).click();
+  await page.getByRole("tab", { name: "Knowledge base" }).click();
   await expect(
     page.getByText("No documents have been ingested yet."),
   ).toBeVisible();
@@ -466,6 +635,7 @@ test("the real proxy allows only the new read-only corpus routes", async ({
     "chat/activity/11111111-1111-4111-8111-111111111111/result",
     "admin/knowledge-base",
     "admin/documents/irs-rev-rul-2004-86/chunks",
+    "admin/conversations/11111111-1111-4111-8111-111111111111",
   ];
   for (const path of paths) {
     const response = await page.request.get(`/api/proxy/${path}`);
@@ -486,6 +656,11 @@ test("the real proxy allows only the new read-only corpus routes", async ({
   expect(
     (
       await page.request.get("/api/proxy/admin/documents/not/a/source/chunks")
+    ).status(),
+  ).toBe(404);
+  expect(
+    (
+      await page.request.get("/api/proxy/admin/conversations/not-a-uuid")
     ).status(),
   ).toBe(404);
 });

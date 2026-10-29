@@ -7,6 +7,7 @@ import { useState } from "react";
 
 import { Wordmark } from "@/components/brand";
 import { useSession } from "@/components/session-context";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -62,7 +63,7 @@ export function AppHeader({ leading }: { leading?: React.ReactNode }) {
           );
         })}
       </nav>
-      <div className="ml-auto flex items-center gap-3">
+      <div className="ml-auto flex items-center gap-2">
         {me && (
           <span className="text-muted-foreground hidden max-w-[16rem] truncate text-sm md:inline">
             {me.email}
@@ -73,6 +74,7 @@ export function AppHeader({ leading }: { leading?: React.ReactNode }) {
             )}
           </span>
         )}
+        <ThemeToggle />
         <Button
           variant="ghost"
           size="sm"

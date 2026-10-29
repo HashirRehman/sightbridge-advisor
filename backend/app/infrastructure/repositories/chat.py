@@ -64,6 +64,14 @@ class ChatRepository:
             )
         )
 
+    def get_conversation_for_admin(self, conversation_id: uuid.UUID) -> Conversation | None:
+        """Any user's conversation. Callers must have verified the admin role."""
+        return self._session.scalar(
+            select(Conversation)
+            .where(Conversation.id == conversation_id)
+            .options(joinedload(Conversation.user))
+        )
+
     def create_conversation(self, user_id: str, title: str) -> Conversation:
         conversation = Conversation(user_id=user_id, title=title)
         self._session.add(conversation)

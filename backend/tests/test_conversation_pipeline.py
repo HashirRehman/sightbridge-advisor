@@ -72,11 +72,13 @@ class Reviewer:
         default_factory=lambda: [ResponseReview(SafetyVerdict.ALLOW)]
     )
     calls: list[list[str]] = field(default_factory=list)
+    questions: list[str | None] = field(default_factory=list)
 
     def review(
-        self, question: str, claims: list[Any], citations: list[Any], *, passages: list[Any]
+        self, question: str | None, claims: list[Any], citations: list[Any], *, passages: list[Any]
     ) -> ResponseReview:
         self.calls.append([c.text for c in claims])
+        self.questions.append(question)
         review = self.reviews[min(len(self.calls), len(self.reviews)) - 1]
         if isinstance(review, Exception):
             raise review
@@ -212,13 +214,24 @@ def test_planner_outage_fails_closed() -> None:
     assert pipeline.calls() == (1, 0, 0, 0)
 
 
-def test_explicit_advice_stays_advice_after_the_planner_rewrites_it() -> None:
+def test_personally_framed_question_skips_planning_and_is_never_advice() -> None:
     pipeline = Pipeline()
-    answer = pipeline.service.answer("Should I do a 1031 exchange on my rental?")
+    answer = pipeline.service.answer("Should I report the exchange on Form 8824?")
     assert answer.status is AnswerStatus.REFUSED
     assert answer.reason is AnswerReason.PERSONALIZED_ADVICE
     assert answer.explanation  # general education alongside the refusal
     assert pipeline.generator.calls[0][2] is GenerationMode.GENERAL_EDUCATION
+    assert pipeline.calls() == (0, 1, 1, 1)
+
+
+@pytest.mark.parametrize(
+    "question", ["Should I invest 1M dollars?", "Which DST should I buy?", "Am I accredited?"]
+)
+def test_personal_decision_is_refused_at_the_guard(question: str) -> None:
+    pipeline = Pipeline()
+    answer = pipeline.service.answer(question)
+    assert answer.reason is AnswerReason.PERSONALIZED_ADVICE
+    assert pipeline.calls() == (0, 0, 0, 0)
 
 
 def test_simplification_reuses_cited_evidence_without_planning_or_search() -> None:
@@ -557,3 +570,17 @@ def test_draft_gutted_by_the_quote_check_is_regenerated_without_a_wasted_review(
     assert len(answer.explanation) == 2  # the repaired draft
     assert pipeline.calls() == (0, 1, 2, 1)  # only the repaired draft is reviewed
     assert "A 1031 swap delays the tax bill." in pipeline.generator.calls[1][0]
+
+
+def test_a_request_the_planner_screened_is_not_re_judged_by_the_reviewer() -> None:
+    second_opinion = ResponseReview(SafetyVerdict.ALLOW, request_safety=SafetyVerdict.MISCONDUCT)
+    planned = ConversationPlan(action="search", search_queries=["1031 tax deferral"], model_id="m")
+    pipeline = Pipeline(planner=Planner(planned), reviewer=Reviewer([second_opinion]))
+    answer = pipeline.service.answer("How can I legally avoid tax on my property sale?")
+    assert answer.status is AnswerStatus.ANSWERED
+    assert pipeline.reviewer.questions == [None]  # the reviewer never saw the request
+    # Fast paths skip the planner, so there the reviewer's request verdict still applies.
+    pipeline = Pipeline(reviewer=Reviewer([second_opinion]))
+    assert pipeline.service.answer("What is a 1031 exchange?").reason is (
+        AnswerReason.SAFETY_VIOLATION
+    )

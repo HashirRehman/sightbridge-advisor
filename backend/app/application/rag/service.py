@@ -13,7 +13,7 @@ AssistantAnswer with a disclaimer.
 
 import logging
 import re
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from difflib import SequenceMatcher
 
 from app.application.rag.activity import activity_step
@@ -106,6 +106,10 @@ NOTICE_ACKNOWLEDGED = (
 NOTICE_PERSONALIZED = (
     "I can't make recommendations or assess a specific person's situation. That requires a "
     "qualified tax, legal or financial professional who knows the full facts."
+)
+NOTICE_PERSONAL_DECISION = (
+    f"{NOTICE_PERSONALIZED} I can explain the general rules instead, for example how a DST "
+    "works, what the 1031 deadlines are, or which risks investors should understand."
 )
 NOTICE_PERSONALIZED_WITH_EDUCATION = (
     f"{NOTICE_PERSONALIZED} Here is general educational information on the topics your "
@@ -255,7 +259,7 @@ class AnswerService:
                 search_queries=related_topic_queries(question) or _ALL_SUBJECTS,
             )
 
-        personalized = decision.outcome is PolicyOutcome.PERSONALIZED_ADVICE
+        personalized = decision.outcome is PolicyOutcome.PERSONAL_FRAMING
         try:
             passages = (
                 list(evidence) if plan.action in ("rewrite", "cite") else self._retrieve(plan)
@@ -305,7 +309,12 @@ class AnswerService:
             return ConversationPlan(action="rewrite")
         if evidence and history and evidence_reference_followup(question):
             return ConversationPlan(action="cite")
-        if self._planner is None or direct_factual_request(question):
+        if (
+            self._planner is None
+            or direct_factual_request(question)
+            # The guard already classified it: general education on the question as asked.
+            or decision.outcome is PolicyOutcome.PERSONAL_FRAMING
+        ):
             return ConversationPlan(action="search", search_queries=[question])
         return self._planner.plan(question, history)
 
@@ -386,43 +395,22 @@ class AnswerService:
         personalized: bool,
         refined: bool,
     ) -> AssistantAnswer:
+        """Write, check and decide; at most one retry, and only after a failure."""
         mode = GenerationMode.GENERAL_EDUCATION if personalized else GenerationMode.STANDARD
         for attempt in range(2):
-            labeled = _label(passages)
-            try:
-                with activity_step("generation"):
-                    result = self._generator.generate(task, labeled, mode)
-            except GenerationError as exc:
-                logger.warning("generation failed", extra={"error_type": type(exc).__name__})
-                if personalized:
-                    # The refusal itself is the essential response; education is a bonus.
-                    return _refused(AnswerReason.PERSONALIZED_ADVICE, NOTICE_PERSONALIZED)
-                return _failed(retrieved=len(labeled))
-
-            with activity_step("privacy_check"):
-                claims = result.draft.explanation + result.draft.key_considerations
-                risks = {local_safety_verdict(c.text) for c in claims}
-            if SafetyVerdict.SENSITIVE_DATA in risks:
-                return _refused(AnswerReason.SENSITIVE_DATA, NOTICE_PRIVACY)
-            if risks - {SafetyVerdict.ALLOW}:
-                return _refused(AnswerReason.SAFETY_VIOLATION, NOTICE_SAFETY)
-            with activity_step("verification"):
-                verification = verify_answer(result.draft, labeled)
-
+            written = self._write(task, passages, mode, personalized=personalized)
+            if isinstance(written, AssistantAnswer):
+                return written
+            draft = written
             # A retry that can't finish inside the budget only adds billed work before an
             # error, so the best checked result so far is final once time runs short.
             final = attempt == 1 or remaining_seconds(RETRY_MIN_SECONDS) < RETRY_MIN_SECONDS
-            if not (result.draft.answerable and verification.explanation):
-                if final:
-                    break
-                if plan.action in ("rewrite", "cite") and result.draft.answerable:
-                    # Reused evidence has no search to refine; a draft whose quotes all
-                    # failed verification gets one regeneration instead.
-                    task += QUOTE_NOTE
-                    continue
-                if refined or not self._refinable(plan):
-                    break
-                # Nothing supported in the first passages: one bounded search refinement.
+            step = self._decide(question, plan, history, draft, final=final, refined=refined)
+            if isinstance(step, AssistantAnswer):
+                return step
+            if step is None:
+                break
+            if step.refine_search:
                 refined = True
                 try:
                     replacement = self._refine(plan)
@@ -434,95 +422,170 @@ class AnswerService:
                 if not replacement:
                     break
                 passages = replacement
-                continue
-            if (
-                not final
-                and plan.action == "rewrite"
-                and self._repeats(question, verification, history)
-            ):
-                task += REWRITE_COPY_NOTE
-                continue
-            issue = "unsupported_inference"
-            drafted = result.draft.explanation[:MAX_EXPLANATION_CLAIMS]
-            # Reviewing a draft the quote check already gutted only to discard it wastes a call.
-            gutted = not _intact(len(drafted), len(verification.explanation))
-            if self._reviewer is not None and (final or not gutted):
-                try:
-                    review = self._reviewer.review(
-                        question,
-                        verification.explanation + verification.key_considerations,
-                        verification.citations,
-                        passages=labeled,
-                    )
-                except GenerationError:
-                    return _failed(retrieved=len(labeled))
-                if review.safety is not SafetyVerdict.ALLOW:
-                    return _safety_refusal(review.safety)
-                if review.failed_claim_indexes:
-                    rejected = _claim_texts(verification, review.failed_claim_indexes)
-                    verification = _without_claims(result.draft, verification, rejected, labeled)
-                    issue = review.issue or issue
-            # Sentences can be removed by the quote check or by the review. If the direct
-            # answer survives, publish it rather than pay for a regeneration; a gutted
-            # explanation reads as fragments and gets the one repair attempt below.
-            if verification.explanation and (
-                final or _intact(len(drafted), len(verification.explanation))
-            ):
-                break
-            if final:
-                return _built(
-                    result,
-                    labeled,
-                    verification,
-                    AnswerStatus.UNSUPPORTED,
-                    AnswerReason.CITATIONS_FAILED_VERIFICATION,
-                    NOTICE_UNSUPPORTED,
-                )
-            kept = {c.text for c in verification.explanation + verification.key_considerations}
-            lost = [c.text.strip() for c in drafted if c.text.strip() not in kept]
-            task += repair_note(issue, lost)
+            task += step.note
+        return _publish(draft, personalized=personalized)
 
-        logger.info(
-            "answer verified",
-            extra={
-                "answerable": result.draft.answerable,
-                "kept_claims": len(verification.explanation) + len(verification.key_considerations),
-                "dropped_claims": verification.dropped_claims,
-                "rejected_citations": verification.rejected_citations,
-            },
-        )
-        if not result.draft.answerable or not verification.explanation:
+    def _write(
+        self,
+        task: str,
+        passages: list[RetrievedPassage],
+        mode: GenerationMode,
+        *,
+        personalized: bool,
+    ) -> "_Draft | AssistantAnswer":
+        """Generate one answer, then apply the free checks: privacy and exact quotes."""
+        labeled = _label(passages)
+        try:
+            with activity_step("generation"):
+                result = self._generator.generate(task, labeled, mode)
+        except GenerationError as exc:
+            logger.warning("generation failed", extra={"error_type": type(exc).__name__})
             if personalized:
-                return _built(
-                    result,
-                    labeled,
-                    verification,
-                    AnswerStatus.REFUSED,
-                    AnswerReason.PERSONALIZED_ADVICE,
-                    NOTICE_PERSONALIZED,
+                # The refusal itself is the essential response; education is a bonus.
+                return _refused(AnswerReason.PERSONALIZED_ADVICE, NOTICE_PERSONALIZED)
+            return _failed(retrieved=len(labeled))
+        with activity_step("privacy_check"):
+            claims = result.draft.explanation + result.draft.key_considerations
+            risks = {local_safety_verdict(c.text) for c in claims}
+        if SafetyVerdict.SENSITIVE_DATA in risks:
+            return _refused(AnswerReason.SENSITIVE_DATA, NOTICE_PRIVACY)
+        if risks - {SafetyVerdict.ALLOW}:
+            return _refused(AnswerReason.SAFETY_VIOLATION, NOTICE_SAFETY)
+        with activity_step("verification"):
+            verification = verify_answer(result.draft, labeled)
+        return _Draft(result, labeled, verification)
+
+    def _decide(
+        self,
+        question: str,
+        plan: ConversationPlan,
+        history: list[dict[str, str]],
+        draft: "_Draft",
+        *,
+        final: bool,
+        refined: bool,
+    ) -> "_Retry | AssistantAnswer | None":
+        """Review a checked draft. None publishes it; _Retry asks for one more draft."""
+        result = draft.result
+        if not (result.draft.answerable and draft.verification.explanation):
+            if final:
+                return None
+            if plan.action in ("rewrite", "cite") and result.draft.answerable:
+                # Reused evidence has no search to refine; a draft whose quotes all failed
+                # verification gets one regeneration instead.
+                return _Retry(QUOTE_NOTE)
+            if refined or not self._refinable(plan):
+                return None
+            # Nothing supported in the first passages: one bounded search refinement.
+            return _Retry(refine_search=True)
+        if (
+            not final
+            and plan.action == "rewrite"
+            and self._repeats(question, draft.verification, history)
+        ):
+            return _Retry(REWRITE_COPY_NOTE)
+
+        drafted = len(result.draft.explanation[:MAX_EXPLANATION_CLAIMS])
+        issue = "unsupported_inference"
+        # Each request is judged once: by the planner when it ran, otherwise by the reviewer.
+        screened = plan.model_id is not None
+        # Reviewing a draft the quote check already gutted, only to discard it, wastes a call.
+        if self._reviewer is not None and (
+            final or _intact(drafted, len(draft.verification.explanation))
+        ):
+            try:
+                review = self._reviewer.review(
+                    None if screened else question,
+                    draft.verification.explanation + draft.verification.key_considerations,
+                    draft.verification.citations,
+                    passages=draft.labeled,
                 )
+            except GenerationError:
+                return _failed(retrieved=len(draft.labeled))
+            if review.safety is not SafetyVerdict.ALLOW:
+                return _safety_refusal(review.safety)
+            if not screened and review.request_safety is not SafetyVerdict.ALLOW:
+                return _safety_refusal(review.request_safety)
+            if review.failed_claim_indexes:
+                rejected = _claim_texts(draft.verification, review.failed_claim_indexes)
+                draft.verification = _without_claims(
+                    result.draft, draft.verification, rejected, draft.labeled
+                )
+                issue = review.issue or issue
+
+        # Sentences can be removed by the quote check or by the review. If the direct answer
+        # survives, publish it rather than pay for a regeneration; a gutted explanation reads
+        # as fragments and gets the one repair attempt.
+        kept = draft.verification.explanation
+        if kept and (final or _intact(drafted, len(kept))):
+            return None
+        if final:
             return _built(
-                result,
-                labeled,
-                verification,
+                draft,
                 AnswerStatus.UNSUPPORTED,
-                AnswerReason.MODEL_FOUND_INSUFFICIENT
-                if not result.draft.answerable
-                else AnswerReason.CITATIONS_FAILED_VERIFICATION,
+                AnswerReason.CITATIONS_FAILED_VERIFICATION,
                 NOTICE_UNSUPPORTED,
             )
-        answer = _built(
-            result,
-            labeled,
-            verification,
-            AnswerStatus.REFUSED if personalized else AnswerStatus.ANSWERED,
-            AnswerReason.PERSONALIZED_ADVICE if personalized else None,
-            NOTICE_PERSONALIZED_WITH_EDUCATION if personalized else None,
+        survivors = {c.text for c in kept + draft.verification.key_considerations}
+        lost = [
+            c.text.strip()
+            for c in result.draft.explanation[:MAX_EXPLANATION_CLAIMS]
+            if c.text.strip() not in survivors
+        ]
+        return _Retry(repair_note(issue, lost))
+
+
+@dataclass
+class _Draft:
+    """One generated answer and what survived checking so far."""
+
+    result: GenerationResult
+    labeled: list[LabeledPassage]
+    verification: VerificationResult
+
+
+@dataclass(frozen=True)
+class _Retry:
+    """Ask for one more draft: append `note` to the task, or search again first."""
+
+    note: str = ""
+    refine_search: bool = False
+
+
+def _publish(draft: _Draft, *, personalized: bool) -> AssistantAnswer:
+    result, verification = draft.result, draft.verification
+    logger.info(
+        "answer verified",
+        extra={
+            "answerable": result.draft.answerable,
+            "kept_claims": len(verification.explanation) + len(verification.key_considerations),
+            "dropped_claims": verification.dropped_claims,
+            "rejected_citations": verification.rejected_citations,
+        },
+    )
+    if not result.draft.answerable or not verification.explanation:
+        if personalized:
+            return _built(
+                draft, AnswerStatus.REFUSED, AnswerReason.PERSONALIZED_ADVICE, NOTICE_PERSONALIZED
+            )
+        return _built(
+            draft,
+            AnswerStatus.UNSUPPORTED,
+            AnswerReason.MODEL_FOUND_INSUFFICIENT
+            if not result.draft.answerable
+            else AnswerReason.CITATIONS_FAILED_VERIFICATION,
+            NOTICE_UNSUPPORTED,
         )
-        answer.explanation = verification.explanation
-        answer.key_considerations = verification.key_considerations
-        answer.citations = verification.citations
-        return answer
+    answer = _built(
+        draft,
+        AnswerStatus.REFUSED if personalized else AnswerStatus.ANSWERED,
+        AnswerReason.PERSONALIZED_ADVICE if personalized else None,
+        NOTICE_PERSONALIZED_WITH_EDUCATION if personalized else None,
+    )
+    answer.explanation = verification.explanation
+    answer.key_considerations = verification.key_considerations
+    answer.citations = verification.citations
+    return answer
 
 
 def _local_refusal(local: SafetyVerdict, decision: PolicyDecision) -> AssistantAnswer | None:
@@ -535,6 +598,8 @@ def _local_refusal(local: SafetyVerdict, decision: PolicyDecision) -> AssistantA
         return _refused(AnswerReason.SAFETY_VIOLATION, NOTICE_SAFETY)
     if decision.outcome is PolicyOutcome.PROMPT_INJECTION:
         return _refused(AnswerReason.PROMPT_INJECTION, NOTICE_INJECTION)
+    if decision.outcome is PolicyOutcome.PERSONALIZED_ADVICE:
+        return _refused(AnswerReason.PERSONALIZED_ADVICE, NOTICE_PERSONAL_DECISION)
     if decision.outcome is PolicyOutcome.OUT_OF_SCOPE:
         return _refused(AnswerReason.OUT_OF_SCOPE, NOTICE_OUT_OF_SCOPE)
     return None
@@ -551,7 +616,7 @@ def _screen(plan: ConversationPlan, decision: PolicyDecision) -> AssistantAnswer
             return _refused(AnswerReason.OUT_OF_SCOPE, NOTICE_OUT_OF_SCOPE)
     elif verdict not in (SafetyVerdict.ALLOW, SafetyVerdict.ASSISTANT_HELP):
         return _safety_refusal(verdict)
-    if decision.outcome is PolicyOutcome.PERSONALIZED_ADVICE and plan.action != "search":
+    if decision.outcome is PolicyOutcome.PERSONAL_FRAMING and plan.action != "search":
         return _refused(AnswerReason.PERSONALIZED_ADVICE, NOTICE_PERSONALIZED)
     return None
 
@@ -616,9 +681,7 @@ def _without_claims(
 
 
 def _built(
-    result: GenerationResult,
-    labeled: list[LabeledPassage],
-    verification: VerificationResult,
+    draft: _Draft,
     status: AnswerStatus,
     reason: AnswerReason | None,
     notice: str | None,
@@ -627,10 +690,10 @@ def _built(
         status=status,
         reason=reason,
         notice=notice,
-        model_id=result.model_id,
-        usage=result.usage,
-        retrieved_passages=len(labeled),
-        dropped_claims=verification.dropped_claims,
+        model_id=draft.result.model_id,
+        usage=draft.result.usage,
+        retrieved_passages=len(draft.labeled),
+        dropped_claims=draft.verification.dropped_claims,
     )
 
 

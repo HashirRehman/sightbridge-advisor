@@ -1,7 +1,7 @@
 """Deterministic pre-generation policy. Runs before any model call, so critical refusals never
 depend on the model following its prompt.
 
-Order matters: injection → personalised advice → scope.
+Order matters: injection → personal decision → personal framing → scope.
 """
 
 import re
@@ -15,7 +15,12 @@ class PolicyOutcome(StrEnum):
     ALLOW = "allow"
     CAPABILITIES = "capabilities"
     PROMPT_INJECTION = "prompt_injection"
+    # Asks for a personal recommendation, suitability/eligibility decision or tax figure:
+    # refused locally, with no model call.
     PERSONALIZED_ADVICE = "personalized_advice"
+    # A general question phrased about the asker's own situation ("should I report it on
+    # Form 8824?"): answered as general education, never as advice.
+    PERSONAL_FRAMING = "personal_framing"
     OUT_OF_SCOPE = "out_of_scope"
 
 
@@ -43,24 +48,29 @@ _INJECTION = _rx(
 )  # fmt: skip
 
 _PERSONALIZED = _rx(
-    # Requests for a recommendation or decision.
-    r"\bshould (i|we|my clients?|our clients?|they|he|she)\b",
+    # Requests for a recommendation or a decision about the asker's own situation.
+    r"\bshould (i|we|my clients?|our clients?|they|he|she) (invest|buy|sell|put|move|choose|pick|use|go with|switch|do a|do an|do the)\b",
     r"\b(do|would|can) you (recommend|suggest|advise)\b",
     r"\b(recommend|suggest)\b.{0,40}\b(for|to) (me|us|my|our)\b",
-    r"\bwhat (should|would you have) (i|we|my clients?)\b",
     r"\bwhat would you do\b",
     r"\b(good|bad|wise|smart|right|best|better|suitable) (idea|choice|option|investment|move|fit) for (me|us|my|our)\b",
     r"\bis (it|this|that|a dst|a 1031|a 721)\b.{0,40}\b(right|suitable|appropriate|good|wise|smart) for (me|us|my|our)\b",
     # Personal figures or tax computations.
     r"\b(i|my|we|our)\b[^.?!]{0,60}\$\s?\d",
     r"\$\s?\d[\d,.]*\s*(k|m|million|thousand)?\b[^.?!]{0,60}\b(i|my|we|our)\b",
+    r"\b(i|my|we|our)\b[^.?!]{0,60}\b\d[\d,.]*\s*(k|m|mm|million|thousand|dollars)\b",
     r"\bhow much (tax|taxes)?\s?(will|would|do|should|can|could) (i|we|my clients?)\b",
     r"\b(calculate|compute|estimate|figure out) (my|our|my client'?s?)\b",
-    r"\bmy (tax|taxes|tax bill|tax liability|tax situation|basis|capital gains?|portfolio)\b",
     # Picking specific products, sponsors or eligibility determinations.
     r"\bwhich (dst|reit|sponsor|fund|property|offering|investment|program)s?\b.{0,30}\b(should|best|buy|choose|pick)\b",
     r"\b(best|top|safest) (dst|reit|sponsor|offering|program)s?\b",
     r"\b(am i|are we|is my client|are my clients|do i|does my client) (an? )?(accredited|eligible|qualif)",
+)  # fmt: skip
+
+_PERSONAL_FRAMING = _rx(
+    r"\bshould (i|we|my clients?|our clients?|they|he|she)\b",
+    r"\bwhat (should|would you have) (i|we|my clients?)\b",
+    r"\bmy (tax|taxes|tax bill|tax liability|tax situation|basis|capital gains?|portfolio)\b",
 )  # fmt: skip
 
 _IN_SCOPE = re.compile(
@@ -126,6 +136,8 @@ def evaluate_question(question: str) -> PolicyDecision:
         return PolicyDecision(PolicyOutcome.PROMPT_INJECTION, in_scope, rule)
     if rule := _first_match(_PERSONALIZED, question):
         return PolicyDecision(PolicyOutcome.PERSONALIZED_ADVICE, in_scope, rule)
+    if rule := _first_match(_PERSONAL_FRAMING, question):
+        return PolicyDecision(PolicyOutcome.PERSONAL_FRAMING, in_scope, rule)
     if not in_scope and (m := _OUT_OF_SCOPE.search(question)):
         return PolicyDecision(PolicyOutcome.OUT_OF_SCOPE, in_scope, m.group(0).lower())
     # Normalise conversational wrappers only for self-description matching. Safety and

@@ -64,7 +64,7 @@ export function LoginForm() {
           autoFocus
           aria-invalid={!!errors.email}
           aria-describedby={errors.email ? "email-error" : undefined}
-          className="h-11 bg-white"
+          className="bg-card h-11"
           {...register("email")}
         />
         {errors.email && (
@@ -81,7 +81,7 @@ export function LoginForm() {
           autoComplete="current-password"
           aria-invalid={!!errors.password}
           aria-describedby={errors.password ? "password-error" : undefined}
-          className="h-11 bg-white"
+          className="bg-card h-11"
           {...register("password")}
         />
         {errors.password && (

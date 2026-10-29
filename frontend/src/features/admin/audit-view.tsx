@@ -7,6 +7,7 @@ import {
   ChevronRight,
   ExternalLink,
   Lock,
+  MessagesSquare,
   Search,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -42,10 +43,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { api, ApiError, type AdminExchange, type AuditPage } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
 import { ActivityView } from "../chat/activity-view";
 
+import { ConversationThread } from "./conversation-thread";
 import { KnowledgeBasePanel } from "./knowledge-base-panel";
+
+type DetailView = "details" | "conversation";
 
 const PAGE_SIZE = 25;
 const timestamp = new Intl.DateTimeFormat(undefined, {
@@ -77,6 +82,11 @@ export function AuditView() {
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<AdminExchange | null>(null);
+  const [view, setView] = useState<DetailView>("details");
+  const open = (exchange: AdminExchange, next: DetailView) => {
+    setView(next);
+    setSelected(exchange);
+  };
   const debouncedSearch = useDebounced(search);
   const debouncedUser = useDebounced(user);
 
@@ -122,9 +132,21 @@ export function AuditView() {
     error?.status === 403 || (!sessionLoading && me && !me.is_admin);
 
   return (
-    <div className="flex min-h-dvh flex-col">
+    // On large screens the knowledge base keeps its summary in view and scrolls only the
+    // document list; on phones the whole page scrolls, which is easier to use.
+    <div
+      className={cn(
+        "flex min-h-dvh flex-col",
+        tab === "knowledge" && "lg:h-dvh",
+      )}
+    >
       <AppHeader />
-      <main className="mx-auto w-full max-w-7xl flex-1 space-y-6 px-4 py-8 sm:px-6">
+      <main
+        className={cn(
+          "mx-auto w-full max-w-7xl flex-1 space-y-6 px-4 py-8 sm:px-6",
+          tab === "knowledge" && "lg:flex lg:min-h-0 lg:flex-col",
+        )}
+      >
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold">Admin dashboard</h1>
           <p className="text-muted-foreground text-sm">
@@ -191,6 +213,7 @@ export function AuditView() {
                 role="tabpanel"
                 id="panel-knowledge"
                 aria-labelledby="tab-knowledge"
+                className="lg:flex lg:min-h-0 lg:flex-1 lg:flex-col"
               >
                 <KnowledgeBasePanel />
               </div>
@@ -285,13 +308,16 @@ export function AuditView() {
                           <TableHead className="hidden w-20 text-right sm:table-cell">
                             Sources
                           </TableHead>
+                          <TableHead className="w-16 text-center">
+                            Chat
+                          </TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {loading && !page ? (
                           [0, 1, 2, 3].map((i) => (
                             <TableRow key={i}>
-                              <TableCell colSpan={5}>
+                              <TableCell colSpan={6}>
                                 <Skeleton className="h-5 w-full" />
                               </TableCell>
                             </TableRow>
@@ -299,7 +325,7 @@ export function AuditView() {
                         ) : page && page.items.length === 0 ? (
                           <TableRow>
                             <TableCell
-                              colSpan={5}
+                              colSpan={6}
                               className="text-muted-foreground py-12 text-center"
                             >
                               No exchanges match these filters.
@@ -317,7 +343,7 @@ export function AuditView() {
                               <TableCell className="max-w-[28rem] whitespace-normal">
                                 <button
                                   type="button"
-                                  onClick={() => setSelected(item)}
+                                  onClick={() => open(item, "details")}
                                   title="View exchange details"
                                   aria-haspopup="dialog"
                                   className="group inline-flex cursor-pointer items-start gap-2 rounded-sm text-left text-sm font-medium underline decoration-border underline-offset-4 hover:decoration-foreground"
@@ -336,6 +362,21 @@ export function AuditView() {
                               </TableCell>
                               <TableCell className="hidden text-right text-sm tabular-nums sm:table-cell">
                                 {item.citations.length}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => open(item, "conversation")}
+                                  aria-label={`Open the conversation for: ${item.question}`}
+                                  aria-haspopup="dialog"
+                                  title="Open conversation"
+                                  className="text-muted-foreground hover:text-foreground hover:bg-muted inline-flex size-8 cursor-pointer items-center justify-center rounded-md"
+                                >
+                                  <MessagesSquare
+                                    className="size-4"
+                                    aria-hidden
+                                  />
+                                </button>
                               </TableCell>
                             </TableRow>
                           ))
@@ -378,7 +419,12 @@ export function AuditView() {
           </>
         )}
       </main>
-      <ExchangeDetail exchange={selected} onClose={() => setSelected(null)} />
+      <ExchangeDetail
+        exchange={selected}
+        view={view}
+        onViewChange={setView}
+        onClose={() => setSelected(null)}
+      />
     </div>
   );
 }
@@ -409,17 +455,30 @@ function Summary({ page }: { page: AuditPage | null }) {
 
 function ExchangeDetail({
   exchange,
+  view,
+  onViewChange,
   onClose,
 }: {
   exchange: AdminExchange | null;
+  view: DetailView;
+  onViewChange: (view: DetailView) => void;
   onClose: () => void;
 }) {
   return (
     <Sheet open={exchange !== null} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
+      <SheetContent
+        // Header and close button stay put; only the body scrolls. Width uses the same
+        // side-specific variant as the base sheet so it actually overrides it.
+        className={cn(
+          "gap-0 overflow-hidden data-[side=right]:w-full",
+          view === "conversation"
+            ? "data-[side=right]:sm:max-w-2xl"
+            : "data-[side=right]:sm:max-w-xl",
+        )}
+      >
         {exchange && (
           <>
-            <SheetHeader>
+            <SheetHeader className="border-b">
               <SheetTitle className="pr-6 leading-snug">
                 {exchange.question}
               </SheetTitle>
@@ -427,95 +486,138 @@ function ExchangeDetail({
                 {exchange.user_email} ·{" "}
                 {timestamp.format(new Date(exchange.created_at))}
               </SheetDescription>
-            </SheetHeader>
-            <div className="space-y-6 px-4 pb-8">
-              <div className="flex flex-wrap items-center gap-2">
-                <StatusBadge status={exchange.status} />
-                {exchange.reason && (
-                  <span className="text-muted-foreground text-xs">
-                    {REASON_LABELS[exchange.reason] ?? exchange.reason}
-                  </span>
-                )}
+              <div
+                role="tablist"
+                aria-label="Exchange views"
+                className="bg-muted mt-2 inline-flex w-fit gap-1 rounded-lg p-1"
+              >
+                {(
+                  [
+                    ["details", "Details"],
+                    ["conversation", "Conversation"],
+                  ] as const
+                ).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    role="tab"
+                    aria-selected={view === value}
+                    onClick={() => onViewChange(value)}
+                    className={cn(
+                      "cursor-pointer rounded-md px-3 py-1 text-sm font-medium",
+                      view === value
+                        ? "bg-card shadow-xs"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
-              <section className="space-y-2">
-                <h3 className="text-sm font-semibold">
-                  Answer shown to the user
-                </h3>
-                <pre className="bg-muted/60 rounded-lg border p-3 font-sans text-sm leading-relaxed whitespace-pre-wrap">
-                  {exchange.answer_text}
-                </pre>
-              </section>
-              {exchange.citations.length > 0 && (
-                <section className="space-y-2">
-                  <h3 className="text-sm font-semibold">Cited sources</h3>
-                  <ol className="space-y-2">
-                    {exchange.citations.map((c) => (
-                      <li
-                        key={c.number}
-                        className="rounded-lg border p-3 text-sm"
-                      >
-                        <a
-                          href={c.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-start gap-1.5 font-medium underline-offset-4 hover:underline"
-                        >
-                          [{c.number}] {c.title}
-                          <ExternalLink
-                            className="mt-0.5 size-3.5 shrink-0"
-                            aria-hidden
-                          />
-                        </a>
-                        <p className="text-muted-foreground text-xs">
-                          {c.publisher}
-                          {c.location && <> · {c.location}</>} · {c.document_id}
-                        </p>
-                        {c.quotes.map((q) => (
-                          <p
-                            key={q}
-                            className="text-foreground/80 mt-1.5 text-xs italic"
+            </SheetHeader>
+            <div
+              data-scroll-body
+              className="min-h-0 flex-1 overflow-y-auto pt-4"
+            >
+              {view === "conversation" ? (
+                <div className="px-4 pb-8">
+                  <ConversationThread
+                    conversationId={exchange.conversation_id}
+                    highlightedId={exchange.id}
+                  />
+                </div>
+              ) : (
+                <div className="space-y-6 px-4 pb-8">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusBadge status={exchange.status} />
+                    {exchange.reason && (
+                      <span className="text-muted-foreground text-xs">
+                        {REASON_LABELS[exchange.reason] ?? exchange.reason}
+                      </span>
+                    )}
+                  </div>
+                  <section className="space-y-2">
+                    <h3 className="text-sm font-semibold">
+                      Answer shown to the user
+                    </h3>
+                    <pre className="bg-muted/60 rounded-lg border p-3 font-sans text-sm leading-relaxed whitespace-pre-wrap">
+                      {exchange.answer_text}
+                    </pre>
+                  </section>
+                  {exchange.citations.length > 0 && (
+                    <section className="space-y-2">
+                      <h3 className="text-sm font-semibold">Cited sources</h3>
+                      <ol className="space-y-2">
+                        {exchange.citations.map((c) => (
+                          <li
+                            key={c.number}
+                            className="rounded-lg border p-3 text-sm"
                           >
-                            “{q}”
-                          </p>
+                            <a
+                              href={c.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-start gap-1.5 font-medium underline-offset-4 hover:underline"
+                            >
+                              [{c.number}] {c.title}
+                              <ExternalLink
+                                className="mt-0.5 size-3.5 shrink-0"
+                                aria-hidden
+                              />
+                            </a>
+                            <p className="text-muted-foreground text-xs">
+                              {c.publisher}
+                              {c.location && <> · {c.location}</>} ·{" "}
+                              {c.document_id}
+                            </p>
+                            {c.quotes.map((q) => (
+                              <p
+                                key={q}
+                                className="text-foreground/80 mt-1.5 text-xs italic"
+                              >
+                                “{q}”
+                              </p>
+                            ))}
+                          </li>
                         ))}
-                      </li>
-                    ))}
-                  </ol>
-                </section>
+                      </ol>
+                    </section>
+                  )}
+                  <ActivityView steps={exchange.activity ?? []} />
+                  <ModelUsageDetails calls={exchange.model_usage ?? []} />
+                  <section className="space-y-2">
+                    <h3 className="text-sm font-semibold">Diagnostics</h3>
+                    <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                      {(
+                        [
+                          ["Model", exchange.model_id ?? "—"],
+                          ["Latency", `${exchange.latency_ms} ms`],
+                          [
+                            "Answer tokens (in / out)",
+                            exchange.input_tokens === null
+                              ? "—"
+                              : `${exchange.input_tokens} / ${exchange.output_tokens}`,
+                          ],
+                          [
+                            "Passages retrieved",
+                            String(exchange.retrieved_passages),
+                          ],
+                          [
+                            "Claims dropped by verification",
+                            String(exchange.dropped_claims),
+                          ],
+                          ["Request ID", exchange.request_id ?? "—"],
+                        ] as const
+                      ).map(([k, v]) => (
+                        <div key={k} className="min-w-0">
+                          <dt className="text-muted-foreground text-xs">{k}</dt>
+                          <dd className="truncate font-mono text-xs">{v}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </section>
+                </div>
               )}
-              <ActivityView steps={exchange.activity ?? []} />
-              <ModelUsageDetails calls={exchange.model_usage ?? []} />
-              <section className="space-y-2">
-                <h3 className="text-sm font-semibold">Diagnostics</h3>
-                <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                  {(
-                    [
-                      ["Model", exchange.model_id ?? "—"],
-                      ["Latency", `${exchange.latency_ms} ms`],
-                      [
-                        "Answer tokens (in / out)",
-                        exchange.input_tokens === null
-                          ? "—"
-                          : `${exchange.input_tokens} / ${exchange.output_tokens}`,
-                      ],
-                      [
-                        "Passages retrieved",
-                        String(exchange.retrieved_passages),
-                      ],
-                      [
-                        "Claims dropped by verification",
-                        String(exchange.dropped_claims),
-                      ],
-                      ["Request ID", exchange.request_id ?? "—"],
-                    ] as const
-                  ).map(([k, v]) => (
-                    <div key={k} className="min-w-0">
-                      <dt className="text-muted-foreground text-xs">{k}</dt>
-                      <dd className="truncate font-mono text-xs">{v}</dd>
-                    </div>
-                  ))}
-                </dl>
-              </section>
             </div>
           </>
         )}
@@ -536,8 +638,14 @@ function ModelUsageDetails({
       call.output_tokens === null ||
       call.estimated_cost_usd === null,
   );
-  const input = calls.reduce((total, call) => total + (call.input_tokens ?? 0), 0);
-  const output = calls.reduce((total, call) => total + (call.output_tokens ?? 0), 0);
+  const input = calls.reduce(
+    (total, call) => total + (call.input_tokens ?? 0),
+    0,
+  );
+  const output = calls.reduce(
+    (total, call) => total + (call.output_tokens ?? 0),
+    0,
+  );
   const estimatedCost = calls.reduce(
     (total, call) => total + (call.estimated_cost_usd ?? 0),
     0,
@@ -551,11 +659,14 @@ function ModelUsageDetails({
         {incomplete ? " for measured calls" : ""}
       </p>
       <details className="rounded-lg border p-3 text-xs">
-        <summary className="cursor-pointer font-medium">View model calls</summary>
+        <summary className="cursor-pointer font-medium">
+          View model calls
+        </summary>
         <ol className="mt-3 space-y-2">
           {calls.map((call, index) => (
             <li key={index} className="border-t pt-2 first:border-0 first:pt-0">
-              <span className="font-medium">{call.model_id}</span> · {call.operation} · {call.status}
+              <span className="font-medium">{call.model_id}</span> ·{" "}
+              {call.operation} · {call.status}
               <br />
               {call.input_tokens ?? "?"} in / {call.output_tokens ?? "?"} out ·{" "}
               {call.latency_ms === null ? "?" : `${call.latency_ms} ms`} ·{" "}
@@ -566,8 +677,8 @@ function ModelUsageDetails({
           ))}
         </ol>
         <p className="text-muted-foreground mt-3">
-          Usage estimates exclude credits and other AWS charges. Calls still running
-          after a timeout may be billed later.
+          Usage estimates exclude credits and other AWS charges. Calls still
+          running after a timeout may be billed later.
         </p>
       </details>
     </section>

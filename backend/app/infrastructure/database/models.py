@@ -133,6 +133,7 @@ class Conversation(TimestampMixin, Base):
     exchanges: Mapped[list["Exchange"]] = relationship(
         back_populates="conversation", order_by="Exchange.created_at"
     )
+    user: Mapped[User] = relationship()
 
     __table_args__ = (Index("ix_conversations_user_updated", "user_id", "updated_at"),)
 

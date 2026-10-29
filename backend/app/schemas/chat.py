@@ -142,6 +142,21 @@ class ConversationDetailOut(BaseModel):
         return cls(id=c.id, title=c.title, exchanges=[ExchangeOut.from_model(e) for e in exchanges])
 
 
+class AdminConversationOut(ConversationDetailOut):
+    """A read-only thread for audit review, with its owner."""
+
+    user_email: str
+
+    @classmethod
+    def from_admin_model(cls, c: Conversation, exchanges: list[Exchange]) -> "AdminConversationOut":
+        return cls(
+            id=c.id,
+            title=c.title,
+            user_email=c.user.email,
+            exchanges=[ExchangeOut.from_model(e) for e in exchanges],
+        )
+
+
 class AdminExchangeOut(ExchangeOut):
     user_id: str
     user_email: str

@@ -211,6 +211,21 @@ def test_audit_log_is_admin_only_and_shows_all_users(client: TestClient) -> None
     assert by_text["total"] == 0  # LIKE wildcards in search input are escaped
 
 
+def test_admin_can_read_any_thread_but_advisors_only_their_own(client: TestClient) -> None:
+    first = _ask(client, ADVISOR_A, "What is a DST?").json()
+    thread = first["conversation_id"]
+    _ask(client, ADVISOR_A, "And its risks?", conversation_id=thread)
+
+    path = f"/api/admin/conversations/{thread}"
+    assert client.get(path, headers=auth(ADVISOR_A)).status_code == 403
+    assert client.get(f"/api/conversations/{thread}", headers=auth(ADMIN)).status_code == 404
+    view = client.get(path, headers=auth(ADMIN)).json()
+    assert view["user_email"] == "a@example.com"
+    assert [e["question"] for e in view["exchanges"]] == ["What is a DST?", "And its risks?"]
+    missing = client.get(f"/api/admin/conversations/{uuid4()}", headers=auth(ADMIN))
+    assert missing.status_code == 404
+
+
 def test_rate_limit_rejects_without_recording_an_exchange(client: TestClient) -> None:
     def limited(session: DbSession) -> ChatService:
         return ChatService(session, FakeAnswerService(), per_minute=2, per_hour=10)  # type: ignore[arg-type]

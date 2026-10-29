@@ -2,6 +2,7 @@ import { BookOpenCheck, FileSearch, ShieldCheck } from "lucide-react";
 import type { Metadata } from "next";
 
 import { Wordmark } from "@/components/brand";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { LoginForm } from "@/features/auth/login-form";
 
 export const metadata: Metadata = { title: "Sign in · Sightbridge Advisor Intelligence" };
@@ -15,11 +16,11 @@ const POINTS = [
 export default function LoginPage() {
   return (
     <main className="grid min-h-dvh lg:grid-cols-[1.05fr_1fr]">
-      <section className="bg-primary text-primary-foreground hidden flex-col justify-between p-12 lg:flex">
+      <section className="bg-panel hidden flex-col justify-between border-r p-12 text-white lg:flex">
         <Wordmark inverted />
         <div className="max-w-md space-y-8">
           <div className="space-y-4">
-            <p className="text-sand text-sm font-medium tracking-[0.18em] uppercase">
+            <p className="text-panel-accent text-sm font-medium tracking-[0.18em] uppercase">
               For financial advisors
             </p>
             <h1 className="text-4xl leading-tight font-semibold">
@@ -33,7 +34,7 @@ export default function LoginPage() {
           <ul className="space-y-4">
             {POINTS.map(({ icon: Icon, text }) => (
               <li key={text} className="flex gap-3 text-white/85">
-                <Icon className="text-sand mt-0.5 size-5 shrink-0" aria-hidden />
+                <Icon className="text-panel-accent mt-0.5 size-5 shrink-0" aria-hidden />
                 <span>{text}</span>
               </li>
             ))}
@@ -44,7 +45,10 @@ export default function LoginPage() {
         </p>
       </section>
 
-      <section className="flex items-center justify-center px-4 py-10 sm:px-8">
+      <section className="relative flex items-center justify-center px-4 py-10 sm:px-8">
+        <div className="absolute top-4 right-4">
+          <ThemeToggle />
+        </div>
         <div className="w-full max-w-sm space-y-8">
           <div className="space-y-3 lg:hidden">
             <Wordmark />
