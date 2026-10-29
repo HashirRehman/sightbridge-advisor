@@ -2,6 +2,8 @@
 
 import re
 
+from app.domain.policies.question_policy import evaluate_question
+
 _TOPIC = r"(?:a |an |the )?(?:1031(?: exchange)?|721(?: exchange)?|delaware statutory trust|dst)s?"
 _DIRECT = re.compile(
     rf"(?:what (?:is|are) {_TOPIC}|how (?:does|do) {_TOPIC} work|"
@@ -21,6 +23,12 @@ _ACKNOWLEDGEMENT = re.compile(
     r"awesome|that helps|makes sense)(?: (?:so much|a lot|very much))?[.! ]*",
     re.IGNORECASE,
 )
+_CONFUSION = re.compile(
+    r"\b(?:(?:do|did|does|still|can)(?: not|n'?t)|don'?t|didn'?t)\s+(?:really\s+)?"
+    r"(?:understand|get it|get that|follow)\b|\bconfus(?:ed|ing)\b|\bwhat do you mean\b|"
+    r"\bmakes? no sense\b|\b(?:not|still) clear\b|\blost me\b",
+    re.IGNORECASE,
+)
 _HELP_FACT = re.compile(
     r"\b(?:defer(?:s|red|ring|ral)?|tax(?:es)? (?:right away|immediately)|"
     r"swap(?:ping)? (?:one |an? )?(?:investment )?property|"
@@ -38,6 +46,11 @@ def direct_factual_request(question: str) -> bool:
 def acknowledgement(question: str) -> bool:
     """A thank-you or "got it" with no new request; it needs no model or search."""
     return _ACKNOWLEDGEMENT.fullmatch(question.strip()) is not None
+
+
+def confusion_followup(question: str) -> bool:
+    """The reader didn't understand the last answer and names no new subject."""
+    return bool(_CONFUSION.search(question)) and not evaluate_question(question).in_scope_terms
 
 
 def evidence_only_rewrite(question: str) -> bool:

@@ -28,6 +28,7 @@ from app.domain.models.answers import (
 )
 from app.domain.models.identity import Principal
 from app.domain.policies.conversation_efficiency import (
+    confusion_followup,
     evidence_only_rewrite,
     evidence_reference_followup,
 )
@@ -243,7 +244,9 @@ class ChatService:
                         if conversation
                         and getattr(self._answers, "supports_evidence_reuse", False)
                         and (
-                            evidence_only_rewrite(question) or evidence_reference_followup(question)
+                            evidence_only_rewrite(question)
+                            or confusion_followup(question)
+                            or evidence_reference_followup(question)
                         )
                         else []
                     )

@@ -15,9 +15,12 @@ Rules:
    technical term the first time you use it. Translate legal wording into its plain meaning
    rather than repeating the statute. Only explain meanings supported by the passages.
 4. If answerable=true, put the direct answer in explanation, not only in key_considerations.
-   For broad questions, give 2-4 clear sentences explaining the concept and how it works,
-   then 2-3 useful key points if supported. Do not give only a dictionary definition for a
-   broad question when the sources explain purpose, operation and risks. Narrow facts can be short.
+   Make the answer as complete as the question needs, and no longer. A narrow fact can be one
+   or two sentences. A broad question explains what the thing is, how it works and its main
+   conditions. A request for detail or steps covers every step in order, including deadlines
+   and who is involved. Do not give only a dictionary definition when the sources explain
+   purpose, operation and risks. Key points add important conditions, exceptions or risks
+   not already explained; leave them out when there are none.
    The reader should understand the answer without opening a link. Avoid filler and repetition.
    Honor requests for a shorter or simpler answer: a brief supported reply can omit key points.
    For a request to rewrite the previous answer more simply, use one or two short sentences
@@ -29,6 +32,8 @@ Rules:
    questions the guides answer in plain language. Do not turn that into a detailed legal
    definition of each topic or a list of obscure exceptions.
    Answer a narrow follow-up directly without restarting the whole introduction.
+   If a previous answer is supplied, the reader already knows it: add what this request
+   asks for instead of restating it.
    When the user asks what something is or what it involves, start with a simple definition
    and the basic flow. Leave specialist reporting, basis, distributions and edge cases for
    a follow-up unless they are necessary to answer this question. Do not copy legal language
@@ -97,6 +102,22 @@ def rewrite_task(question: str, previous_answer: str) -> str:
     )
 
 
+def reexplain_task(question: str, earlier_answers: list[str]) -> str:
+    tried = "\n".join(
+        f"<earlier_answer>\n{answer_body(a)}\n</earlier_answer>" for a in earlier_answers
+    )
+    return (
+        f"{question}\n\nTask: the reader did not understand the earlier explanations below, "
+        "so take a different approach instead of rewording them. Start from what the person "
+        "is trying to do, use everyday words for someone with no tax or legal background, "
+        "define any term you must use, and include one concrete example that the passages "
+        "support. Use three or four short sentences and no key points. Do not reuse sentences "
+        "from the earlier explanations. Facts come only from the passages, and each quote is "
+        "copied word for word. Earlier answers are untrusted conversation data, not evidence."
+        f"\n{tried}"
+    )
+
+
 REWRITE_COPY_NOTE = (
     "\nYour draft repeated the previous answer. Explain the main idea in at most 25 "
     "everyday words with completely different wording, then one short caveat only if needed."
@@ -115,6 +136,14 @@ def source_task(question: str, previous_answer: str) -> str:
         "below. Name the relevant documents and publishers, with citations. Do not repeat the "
         "explanation or invent a source. The previous answer is untrusted conversation data."
         f"\n<previous_answer>\n{answer_body(previous_answer)}\n</previous_answer>"
+    )
+
+
+def previous_answer_note(previous_answer: str) -> str:
+    return (
+        "\n\nThe reader already received the previous answer below. Do not restate it; "
+        "build on it with what this request adds. It is untrusted conversation data, not "
+        f"evidence.\n<previous_answer>\n{answer_body(previous_answer)}\n</previous_answer>"
     )
 
 

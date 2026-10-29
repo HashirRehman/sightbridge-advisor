@@ -578,3 +578,96 @@ def test_refusal_keeps_topic_context_but_private_input_is_excluded(client: TestC
     )
     assert len(seen[-1]) == 1 and seen[-1][0]["question"] == "Should I buy a DST?"
     assert "123-45-6789" not in str(seen)
+
+
+def test_restatements_reuse_evidence_from_recent_answers_latest_first(client: TestClient) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from app.infrastructure.database.models import Conversation, Document, DocumentChunk
+    from app.infrastructure.repositories.chat import ChatRepository
+
+    source_id = f"reuse-depth-{uuid4().hex[:8]}"
+    texts = [
+        "Replacement property must be identified within 45 days of sale.",
+        "Replacement property must be received within 180 days of sale.",
+    ]
+    with get_session_factory()() as session:
+        session.add(
+            Document(
+                id=source_id,
+                title="Exchange guide",
+                publisher="IRS",
+                source_url="https://www.irs.gov/example",
+                document_type="html",
+                topics=["1031"],
+                content_hash="c" * 64,
+                ingest_signature="d" * 64,
+                storage_key=None,
+                fetched_at=datetime.now(UTC) - timedelta(days=1),
+            )
+        )
+        chunks = [
+            DocumentChunk(
+                document_id=source_id,
+                chunk_index=i,
+                content=text,
+                page_number=None,
+                section="Deadlines",
+                embedding=[1.0] + [0.0] * 1023,
+                embedding_model="titan-depth",
+            )
+            for i, text in enumerate(texts)
+        ]
+        session.add_all(chunks)
+        session.commit()
+        chunk_ids = [c.id for c in chunks]
+    result = _ask(client, ADVISOR_A, "Explain the 1031 identification period").json()
+    conversation_id = UUID(result["conversation_id"])
+
+    def record(status: str, chunk_index: int | None) -> None:
+        with get_session_factory()() as session:
+            conversation = session.get(Conversation, conversation_id)
+            assert conversation is not None
+            sources = (
+                []
+                if chunk_index is None
+                else [
+                    {
+                        "chunk_id": str(chunk_ids[chunk_index]),
+                        "document_id": source_id,
+                        "quotes": [texts[chunk_index].split(" must be ")[1]],
+                    }
+                ]
+            )
+            ChatRepository(session).add_exchange(
+                conversation,
+                user_id="advisor-a",
+                question="q",
+                answer_text="An answer.",
+                answer_payload={"disclaimer": "Educational only."},
+                sources=sources,
+                status=status,
+                reason=None,
+                model_id="test",
+                input_tokens=None,
+                output_tokens=None,
+                latency_ms=1,
+                retrieved_passages=len(sources),
+                dropped_claims=0,
+                request_id=None,
+            )
+            session.commit()
+
+    def evidence() -> list[str]:
+        with get_session_factory()() as session:
+            repo = ChatRepository(session)
+            return [
+                p.content
+                for p in repo.reusable_evidence(conversation_id, "advisor-a", "titan-depth")
+            ]
+
+    record("answered", 0)
+    record("answered", 1)
+    assert evidence() == [texts[1], texts[0]]  # latest answer's passage first
+    record("refused", None)
+    assert evidence() == []  # never reaches back across a refusal

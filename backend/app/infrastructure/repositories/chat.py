@@ -13,6 +13,10 @@ from app.domain.models.identity import Principal
 from app.domain.policies.citation_verifier import quote_matches
 from app.infrastructure.database.models import Conversation, Document, DocumentChunk, Exchange, User
 
+# Answered turns a restatement may draw evidence from, and the passage cap it shares.
+REUSE_DEPTH = 3
+MAX_REUSED_PASSAGES = 6
+
 
 @dataclass(frozen=True, slots=True)
 class ConversationSummary:
@@ -118,75 +122,31 @@ class ChatRepository:
     def reusable_evidence(
         self, conversation_id: uuid.UUID, user_id: str, embedding_model: str
     ) -> list[RetrievedPassage]:
-        """Re-fetch current public chunks cited by the latest owned, answered exchange.
+        """Current public chunks cited by the most recent owned, answered exchanges.
 
-        Never accept client-supplied chunk IDs, skip over intervening refusals, or trust
-        generated prose as evidence. Re-ingestion invalidates the entire reuse candidate.
+        Restatements ("I still don't get it") need the material behind the explanation, not
+        only the last rewrite, which cites fewer passages each time. The latest answer's
+        passages come first; up to REUSE_DEPTH earlier answers fill the remaining room.
+        Collection stops at the first exchange that isn't a clean answer, so a refusal is
+        never bridged. Never accept client-supplied chunk IDs or trust generated prose.
         """
-        row = self._session.scalar(
-            select(Exchange)
-            .where(
-                Exchange.conversation_id == conversation_id,
-                Exchange.user_id == user_id,
-            )
-            .order_by(Exchange.created_at.desc(), Exchange.id.desc())
-            .limit(1)
-        )
-        if row is None or row.status != "answered" or not row.sources:
-            return []
-        result = []
-        for source in row.sources[:6]:
-            try:
-                chunk_id = uuid.UUID(source["chunk_id"])
-            except (ValueError, KeyError, TypeError):
-                return []
-            pair = self._session.execute(
-                select(DocumentChunk, Document)
-                .join(Document)
-                .where(
-                    DocumentChunk.id == chunk_id,
-                    DocumentChunk.embedding_model == embedding_model,
-                )
-            ).first()
-            if pair is None:
-                return []
-            chunk, document = pair
-            if (
-                document.updated_at > row.created_at
-                or document.id != source.get("document_id")
-                or not source.get("quotes")
-                or not all(quote_matches(q, chunk.content) for q in source["quotes"])
-            ):
-                return []
-            result.append(
-                RetrievedPassage(
-                    chunk_id=chunk.id,
-                    document_id=document.id,
-                    title=document.title,
-                    publisher=document.publisher,
-                    source_url=document.source_url,
-                    page_number=chunk.page_number,
-                    section=chunk.section,
-                    content=chunk.content,
-                    similarity=1.0,
-                )
-            )
-        return result
+        passages: list[RetrievedPassage] = []
+        for row in self._recent_exchanges(conversation_id, user_id, REUSE_DEPTH):
+            current = self._current_passages(row, embedding_model)
+            if current is None:
+                break
+            for passage in current:
+                if all(p.chunk_id != passage.chunk_id for p in passages):
+                    passages.append(passage)
+        return passages[:MAX_REUSED_PASSAGES]
 
     def reusable_citations(
         self, conversation_id: uuid.UUID, user_id: str, embedding_model: str
     ) -> list[Citation]:
-        """Original citations only when their current chunks pass reuse checks."""
-        evidence = self.reusable_evidence(conversation_id, user_id, embedding_model)
-        if not evidence:
-            return []
-        row = self._session.scalar(
-            select(Exchange)
-            .where(Exchange.conversation_id == conversation_id, Exchange.user_id == user_id)
-            .order_by(Exchange.created_at.desc(), Exchange.id.desc())
-            .limit(1)
-        )
-        if row is None or len(row.sources[:6]) != len(evidence):
+        """The latest answer's original citations, only when its chunks pass reuse checks."""
+        latest = self._recent_exchanges(conversation_id, user_id, 1)
+        current = self._current_passages(latest[0], embedding_model) if latest else None
+        if not current:
             return []
         return [
             Citation(
@@ -201,9 +161,69 @@ class ChatRepository:
                 quotes=tuple(source["quotes"]),
             )
             for index, (source, passage) in enumerate(
-                zip(row.sources[:6], evidence, strict=True), start=1
+                zip(latest[0].sources[:MAX_REUSED_PASSAGES], current, strict=True), start=1
             )
         ]
+
+    def _recent_exchanges(
+        self, conversation_id: uuid.UUID, user_id: str, limit: int
+    ) -> list[Exchange]:
+        return list(
+            self._session.scalars(
+                select(Exchange)
+                .where(Exchange.conversation_id == conversation_id, Exchange.user_id == user_id)
+                .order_by(Exchange.created_at.desc(), Exchange.id.desc())
+                .limit(limit)
+            )
+        )
+
+    def _current_passages(
+        self, row: Exchange, embedding_model: str
+    ) -> list[RetrievedPassage] | None:
+        """Every cited chunk, unchanged since the answer and still quoting exactly; else None.
+
+        Re-ingestion of any cited document invalidates the whole answer as a reuse source.
+        """
+        if row.status != "answered" or not row.sources:
+            return None
+        result = []
+        for source in row.sources[:MAX_REUSED_PASSAGES]:
+            try:
+                chunk_id = uuid.UUID(source["chunk_id"])
+            except (ValueError, KeyError, TypeError):
+                return None
+            pair = self._session.execute(
+                select(DocumentChunk, Document)
+                .join(Document)
+                .where(
+                    DocumentChunk.id == chunk_id,
+                    DocumentChunk.embedding_model == embedding_model,
+                )
+            ).first()
+            if pair is None:
+                return None
+            chunk, document = pair
+            if (
+                document.updated_at > row.created_at
+                or document.id != source.get("document_id")
+                or not source.get("quotes")
+                or not all(quote_matches(q, chunk.content) for q in source["quotes"])
+            ):
+                return None
+            result.append(
+                RetrievedPassage(
+                    chunk_id=chunk.id,
+                    document_id=document.id,
+                    title=document.title,
+                    publisher=document.publisher,
+                    source_url=document.source_url,
+                    page_number=chunk.page_number,
+                    section=chunk.section,
+                    content=chunk.content,
+                    similarity=1.0,
+                )
+            )
+        return result
 
     def list_exchanges(self, conversation_id: uuid.UUID) -> list[Exchange]:
         return list(

@@ -1,4 +1,4 @@
-from app.domain.policies.citation_verifier import verify_answer
+from app.domain.policies.citation_verifier import MAX_EXPLANATION_CLAIMS, verify_answer
 from tests.factories import DST_TEXT, IDENTIFICATION_TEXT, claim, draft, passage
 
 P1 = passage("P1", IDENTIFICATION_TEXT)
@@ -73,3 +73,12 @@ def test_citations_are_numbered_by_first_use_and_shared_across_claims() -> None:
     assert result.key_considerations[0].citation_numbers == (1,)
     assert result.citations[0].url == "https://www.irs.gov/p2#page=3"
     assert result.citations[0].location == "p. 3"
+
+
+def test_long_detailed_answers_are_kept_up_to_the_backstop() -> None:
+    quote = "must be identified within 45 days after the date you transfer"
+    steps = [
+        claim(f"Step {i}: identify the property within 45 days.", ("P1", quote)) for i in range(12)
+    ]
+    result = verify_answer(draft(*steps), [passage("P1", IDENTIFICATION_TEXT)])
+    assert len(result.explanation) == MAX_EXPLANATION_CLAIMS == 10

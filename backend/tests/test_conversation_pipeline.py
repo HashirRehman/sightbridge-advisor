@@ -98,6 +98,7 @@ class Pipeline:
             self.generator,
             top_k=6,
             min_similarity=0.4,
+            timeout_seconds=60.0,  # the production worker budget
             planner=self.planner,
             reviewer=self.reviewer,
         )
@@ -439,3 +440,120 @@ def test_unsupported_first_draft_skips_refinement_when_time_is_short() -> None:
     answer = pipeline.service.answer("Does an extension change it?", history=HISTORY)
     assert answer.reason is AnswerReason.MODEL_FOUND_INSUFFICIENT
     assert pipeline.calls() == (1, 1, 1, 0)
+
+
+def test_followup_writer_sees_the_previous_answer_so_it_can_build_on_it() -> None:
+    pipeline = Pipeline()
+    pipeline.service.answer("What is a 1031 exchange?")
+    assert "<previous_answer>" not in pipeline.generator.calls[0][0]
+    pipeline.service.answer("How does the whole process work, in detail?", history=HISTORY)
+    task = pipeline.generator.calls[1][0]
+    assert task.startswith("How does the whole process work, in detail?")
+    assert "Do not restate it" in task and HISTORY[0]["answer"][:40] in task
+
+
+@pytest.mark.parametrize(
+    "message", ["I didn't understand that. Can you explain more?", "I still don't get it"]
+)
+def test_confused_reader_gets_a_different_explanation_from_the_same_sources(message: str) -> None:
+    clearer = draft(
+        claim(
+            "Picture selling a rental home: from the transfer date you get 45 days to name "
+            "the replacement property.",
+            ("P1", "must be identified within 45 days after the date you transfer"),
+        )
+    )
+    pipeline = Pipeline(generator=Generator([clearer]))
+    history = [{"question": "What is a 1031 exchange?", "answer": "A first explanation."}, *HISTORY]
+    answer = pipeline.service.answer(message, history=history, evidence=[_retrieved()])
+    assert answer.status is AnswerStatus.ANSWERED
+    assert pipeline.calls() == (0, 0, 1, 1)  # no planning, no new search
+    task = pipeline.generator.calls[0][0]
+    assert "different approach" in task and task.count("<earlier_answer>") == 2
+
+
+def test_confusion_about_a_named_subject_is_a_new_question() -> None:
+    pipeline = Pipeline()
+    pipeline.service.answer(
+        "I don't understand what a DST is", history=HISTORY, evidence=[_retrieved()]
+    )
+    assert pipeline.calls() == (1, 1, 1, 1)
+
+
+def test_confused_reader_never_gets_an_earlier_explanation_back() -> None:
+    reworded = draft(
+        claim(
+            "Replacement property must be identified within 45 days of your transfer.",
+            ("P1", "must be identified within 45 days after the date you transfer"),
+        )
+    )
+    clearer = draft(
+        claim(
+            "Picture selling a rental home: from the transfer date you get 45 days to name "
+            "the replacement property.",
+            ("P1", "must be identified within 45 days after the date you transfer"),
+        )
+    )
+    pipeline = Pipeline(generator=Generator([reworded, clearer]))
+    history = [*HISTORY, {"question": "I don't get it", "answer": "Something different."}]
+    answer = pipeline.service.answer(
+        "I still don't get it", history=history, evidence=[_retrieved()]
+    )
+    assert "Picture selling" in answer.render_text()
+    assert pipeline.calls() == (0, 0, 2, 1)
+
+
+def test_trimmed_answer_never_opens_mid_thought() -> None:
+    answer_draft = draft(
+        claim(
+            "The replacement property must still be identified within 45 days.",
+            ("P1", "must be identified within 45 days after the date you transfer"),
+        ),
+        claim(
+            "However, the replacement property must be received within 180 days.",
+            ("P1", "must be received within 180 days, or by the due date of your tax return"),
+        ),
+        claim(
+            "That period ends earlier if your tax return is due first.",
+            ("P1", "by the due date of your tax return, whichever is earlier"),
+        ),
+    )
+    reviewer = Reviewer([ResponseReview(SafetyVerdict.ALLOW, failed_claim_indexes=(0,))])
+    pipeline = Pipeline(generator=Generator([answer_draft]), reviewer=reviewer)
+    answer = pipeline.service.answer("What is a 1031 exchange?")
+    assert answer.explanation[0].text.startswith("The replacement property must be received")
+
+
+def test_a_thin_search_never_shrinks_the_passages_for_the_other_subjects() -> None:
+    class Search:
+        calls = 0
+
+        def search(
+            self, vector: list[float], *, top_k: int, min_similarity: float
+        ) -> list[RetrievedPassage]:
+            self.calls += 1
+            found = 1 if self.calls == 1 else top_k
+            return [replace(_retrieved(), document_id=f"q{self.calls}") for _ in range(found)]
+
+    plan = ConversationPlan(action="search", search_queries=["DST trustees", "DST powers"])
+    pipeline = Pipeline(planner=Planner(plan))
+    pipeline.service._retriever = Search()
+    pipeline.service.answer("What can DST trustees not do?")
+    selected = [p.document_id for p in pipeline.generator.calls[0][1]]
+    assert len(selected) == 6 and selected[:2] == ["q1", "q2"]
+
+
+def test_draft_gutted_by_the_quote_check_is_regenerated_without_a_wasted_review() -> None:
+    misquoted = draft(
+        claim("A 1031 swap delays the tax bill.", ("P1", "a sentence not in the passage")),
+        claim("You trade one building for another.", ("P1", "another invented quotation here")),
+        claim(
+            "Replacement property must be identified within 45 days.",
+            ("P1", "must be identified within 45 days after the date you transfer"),
+        ),
+    )
+    pipeline = Pipeline(generator=Generator([misquoted, DEADLINES]))
+    answer = pipeline.service.answer("What is a 1031 exchange?")
+    assert len(answer.explanation) == 2  # the repaired draft
+    assert pipeline.calls() == (0, 1, 2, 1)  # only the repaired draft is reviewed
+    assert "A 1031 swap delays the tax bill." in pipeline.generator.calls[1][0]

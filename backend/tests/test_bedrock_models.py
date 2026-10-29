@@ -77,6 +77,16 @@ def test_single_subject_is_not_split_into_several_searches() -> None:
     assert planner(client).plan("What are the risks?", []).search_queries == ["What are DST risks?"]
 
 
+def test_step_by_step_request_keeps_a_search_per_step() -> None:
+    queries = ["1031 identification period", "1031 exchange period", "qualified intermediary"]
+    client = ScriptedClient(
+        "PlanDecision",
+        decision("search", "How does a 1031 exchange work?", search_queries=queries),
+    )
+    plan = planner(client).plan("How does the whole process work, step by step?", [])
+    assert plan.search_queries == queries
+
+
 @pytest.mark.parametrize(("number", "replacement"), [("741", "721"), ("2017", "2018")])
 def test_plan_cannot_silently_replace_an_explicit_number(number: str, replacement: str) -> None:
     question = f"What are the {number} exchange rules?"

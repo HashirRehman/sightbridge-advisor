@@ -26,6 +26,8 @@ from app.domain.policies.question_policy import contains_advice_language
 from app.domain.policies.text import content_words, normalize
 
 MIN_QUOTE_WORDS = 4
+MAX_EXPLANATION_CLAIMS = 10
+MAX_KEY_CONSIDERATIONS = 6
 # Fraction of the claim's content words that must appear in the cited passage text.
 MIN_CLAIM_OVERLAP = 0.3
 
@@ -131,8 +133,9 @@ def verify_answer(draft: AnswerDraft, passages: list[LabeledPassage]) -> Verific
             kept.append(VerifiedClaim(text=text, citation_numbers=numbers))
         return kept
 
-    explanation = verify(draft.explanation[:4])
-    considerations = verify(draft.key_considerations[:5])
+    # Backstops only: the output-token cap bounds length; the prompt asks for completeness.
+    explanation = verify(draft.explanation[:MAX_EXPLANATION_CLAIMS])
+    considerations = verify(draft.key_considerations[:MAX_KEY_CONSIDERATIONS])
     return VerificationResult(
         explanation=explanation,
         key_considerations=considerations,

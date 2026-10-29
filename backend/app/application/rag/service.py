@@ -3,11 +3,11 @@
     local guard → plan → retrieve → generate → verify quotes → review → answer
 
 A normal factual turn costs one planning call, one generation and one review, plus a query
-embedding. Clear factual templates and "make it simpler" skip planning; capability questions
-and source follow-ups need no model at all. Extra calls happen only after a failure: the
-fallback model on an error, one search refinement when nothing is supported, one rewrite
-when a simplification copies the previous answer or misquotes its evidence, and one
-regeneration when the review rejects the core of the explanation. Every branch returns an
+embedding. Clear factual templates, "make it simpler" and "I don't understand" skip planning;
+capability questions and source follow-ups need no model at all. Extra calls happen only after
+a failure: the fallback model on an error, one search refinement when nothing is supported,
+one rewrite when a simplification copies the previous answer or misquotes its evidence, and
+one regeneration when the review rejects the core of the explanation. Every branch returns an
 AssistantAnswer with a disclaimer.
 """
 
@@ -23,6 +23,8 @@ from app.application.rag.prompts import (
     QUOTE_NOTE,
     REWRITE_COPY_NOTE,
     answer_body,
+    previous_answer_note,
+    reexplain_task,
     repair_note,
     resolved_topic_note,
     rewrite_task,
@@ -51,6 +53,7 @@ from app.domain.models.answers import (
 )
 from app.domain.models.documents import RetrievedPassage
 from app.domain.policies.citation_verifier import (
+    MAX_EXPLANATION_CLAIMS,
     VerificationResult,
     deep_link,
     quote_matches,
@@ -58,6 +61,7 @@ from app.domain.policies.citation_verifier import (
 )
 from app.domain.policies.conversation_efficiency import (
     acknowledgement,
+    confusion_followup,
     direct_factual_request,
     evidence_only_rewrite,
     evidence_reference_followup,
@@ -77,8 +81,10 @@ logger = logging.getLogger(__name__)
 MAX_CONTEXT_CHARS = 9000
 # A simplification this similar to the previous answer did not simplify anything.
 NEAR_COPY_RATIO = 0.75
-# Another draft needs a generation (~10-15 s for DeepSeek) and usually a review.
-RETRY_MIN_SECONDS = 12.0
+# A re-explanation for a confused reader must be clearly different, not lightly reworded.
+REEXPLAIN_COPY_RATIO = 0.6
+# Another draft needs a generation (10-35 s for DeepSeek, depending on length) and a review.
+RETRY_MIN_SECONDS = 20.0
 
 NOTICE_CAPABILITIES = (
     "I can help you understand 1031 exchanges, Delaware Statutory Trusts (DSTs), and "
@@ -138,6 +144,11 @@ NOTICE_SAFETY_UNAVAILABLE = (
 NOTICE_FAILED = (
     "Something went wrong while preparing an answer, so none was produced. Please try again "
     "in a moment."
+)
+
+_CONNECTIVE = re.compile(
+    r"^(?:however|but|also|additionally|moreover|furthermore|in addition|instead),?\s+",
+    re.IGNORECASE,
 )
 
 _ALL_SUBJECTS = [
@@ -286,7 +297,11 @@ class AnswerService:
             return ConversationPlan(action="help", reply=_capabilities(decision).notice or "")
         if acknowledgement(question):
             return ConversationPlan(action="help", reply=NOTICE_ACKNOWLEDGED)
-        if evidence and history and evidence_only_rewrite(question):
+        if (
+            evidence
+            and history
+            and (evidence_only_rewrite(question) or confusion_followup(question))
+        ):
             return ConversationPlan(action="rewrite")
         if evidence and history and evidence_reference_followup(question):
             return ConversationPlan(action="cite")
@@ -302,6 +317,8 @@ class AnswerService:
         overview: bool,
     ) -> str:
         """The generator always sees the original request; notes only add context."""
+        if plan.action == "rewrite" and confusion_followup(question):
+            return reexplain_task(question, [turn["answer"] for turn in history[-2:]])
         if plan.action == "rewrite":
             return rewrite_task(question, history[-1]["answer"])
         if plan.action == "cite":
@@ -309,22 +326,22 @@ class AnswerService:
         task = question
         if plan.query and plan.query != question:
             task += resolved_topic_note(plan.query)
+        if history:
+            task += previous_answer_note(history[-1]["answer"])
         return task + OVERVIEW_NOTE if overview else task
 
     def _retrieve(self, plan: ConversationPlan) -> list[RetrievedPassage]:
-        queries = plan.search_queries
-        per_query = max(1, self._top_k // len(queries))
+        """Search every query for the full budget, then interleave by rank.
+
+        Each subject or step keeps its best passage first, and a query that finds little
+        never shrinks the total: the others fill the remaining room.
+        """
+        results = [self._search(query, self._top_k) for query in plan.search_queries]
         passages: list[RetrievedPassage] = []
-        for index, query in enumerate(queries):
-            for rank, passage in enumerate(self._search(query, per_query)):
-                if any(passage.chunk_id == p.chunk_id for p in passages):
-                    continue
-                if rank == 0:
-                    # Keep one strong passage per subject before spending the context
-                    # budget on additional passages about a single subject.
-                    passages.insert(min(index, len(passages)), passage)
-                else:
-                    passages.append(passage)
+        for rank in range(self._top_k):
+            for found in results:
+                if rank < len(found) and all(found[rank].chunk_id != p.chunk_id for p in passages):
+                    passages.append(found[rank])
         return passages[: self._top_k]
 
     def _search(self, query: str, top_k: int) -> list[RetrievedPassage]:
@@ -346,6 +363,17 @@ class AnswerService:
     def _refine(self, plan: ConversationPlan) -> list[RetrievedPassage]:
         with activity_step("search_refinement"):
             return self._search(plan.alternative_query, self._top_k)
+
+    @staticmethod
+    def _repeats(
+        question: str, verification: VerificationResult, history: list[dict[str, str]]
+    ) -> bool:
+        """A restatement that reads like an explanation the reader already rejected."""
+        if confusion_followup(question):
+            # Every earlier attempt failed this reader, so none of them may come back.
+            earlier = [turn["answer"] for turn in history[-2:]]
+            return any(_near_copy(verification, a, REEXPLAIN_COPY_RATIO) for a in earlier)
+        return _near_copy(verification, history[-1]["answer"], NEAR_COPY_RATIO)
 
     def _grounded_answer(
         self,
@@ -410,35 +438,36 @@ class AnswerService:
             if (
                 not final
                 and plan.action == "rewrite"
-                and _near_copy(verification, history[-1]["answer"])
+                and self._repeats(question, verification, history)
             ):
                 task += REWRITE_COPY_NOTE
                 continue
-            if self._reviewer is None:
-                break
-            try:
-                review = self._reviewer.review(
-                    question,
-                    verification.explanation + verification.key_considerations,
-                    verification.citations,
-                    passages=labeled,
-                )
-            except GenerationError:
-                return _failed(retrieved=len(labeled))
-            if review.safety is not SafetyVerdict.ALLOW:
-                return _safety_refusal(review.safety)
-            if not review.failed_claim_indexes:
-                break
-            rejected = _claim_texts(verification, review.failed_claim_indexes)
-            trimmed = _without_claims(result.draft, verification, rejected, labeled)
-            removed = len(verification.explanation) - len(trimmed.explanation)
-            verification = trimmed
-            if trimmed.explanation and (
-                final or removed == 0 or (removed == 1 and len(trimmed.explanation) >= 2)
+            issue = "unsupported_inference"
+            drafted = result.draft.explanation[:MAX_EXPLANATION_CLAIMS]
+            # Reviewing a draft the quote check already gutted only to discard it wastes a call.
+            gutted = not _intact(len(drafted), len(verification.explanation))
+            if self._reviewer is not None and (final or not gutted):
+                try:
+                    review = self._reviewer.review(
+                        question,
+                        verification.explanation + verification.key_considerations,
+                        verification.citations,
+                        passages=labeled,
+                    )
+                except GenerationError:
+                    return _failed(retrieved=len(labeled))
+                if review.safety is not SafetyVerdict.ALLOW:
+                    return _safety_refusal(review.safety)
+                if review.failed_claim_indexes:
+                    rejected = _claim_texts(verification, review.failed_claim_indexes)
+                    verification = _without_claims(result.draft, verification, rejected, labeled)
+                    issue = review.issue or issue
+            # Sentences can be removed by the quote check or by the review. If the direct
+            # answer survives, publish it rather than pay for a regeneration; a gutted
+            # explanation reads as fragments and gets the one repair attempt below.
+            if verification.explanation and (
+                final or _intact(len(drafted), len(verification.explanation))
             ):
-                # The direct answer is still intact: publish the supported claims instead
-                # of paying for a regeneration and a second review. A gutted explanation
-                # reads as fragments, so that case gets the one repair attempt below.
                 break
             if final:
                 return _built(
@@ -449,7 +478,9 @@ class AnswerService:
                     AnswerReason.CITATIONS_FAILED_VERIFICATION,
                     NOTICE_UNSUPPORTED,
                 )
-            task += repair_note(review.issue or "unsupported_inference", sorted(rejected))
+            kept = {c.text for c in verification.explanation + verification.key_considerations}
+            lost = [c.text.strip() for c in drafted if c.text.strip() not in kept]
+            task += repair_note(issue, lost)
 
         logger.info(
             "answer verified",
@@ -539,11 +570,17 @@ def _answered_capabilities(history: list[dict[str, str]]) -> bool:
     )
 
 
-def _near_copy(verification: VerificationResult, previous_answer: str) -> bool:
+def _intact(drafted: int, kept: int) -> bool:
+    """At most one explanation sentence lost, with at least two left (or none lost)."""
+    removed = drafted - kept
+    return removed == 0 or (removed == 1 and kept >= 2)
+
+
+def _near_copy(verification: VerificationResult, previous_answer: str, ratio: float) -> bool:
     previous = re.sub(r"\s*\[\d+\]", "", answer_body(previous_answer)).casefold()
     draft = " ".join(c.text for c in verification.explanation).casefold()
     return all(c.text.casefold() in previous for c in verification.explanation) or (
-        SequenceMatcher(None, draft, previous).ratio() >= NEAR_COPY_RATIO
+        SequenceMatcher(None, draft, previous).ratio() >= ratio
     )
 
 
@@ -568,6 +605,13 @@ def _without_claims(
         }
     )
     result = verify_answer(kept, passages)
+    if result.explanation:
+        # A removed opening sentence can leave the answer starting mid-thought ("However, ...").
+        first = result.explanation[0]
+        opening = _CONNECTIVE.sub("", first.text, count=1)
+        if opening != first.text:
+            first = replace(first, text=opening[:1].upper() + opening[1:])
+            result = replace(result, explanation=[first, *result.explanation[1:]])
     return replace(result, dropped_claims=verification.dropped_claims + len(rejected))
 
 

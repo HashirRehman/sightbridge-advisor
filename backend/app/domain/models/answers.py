@@ -58,14 +58,16 @@ class AnswerDraft(BaseModel):
     )
     explanation: list[DraftClaim] = Field(
         default_factory=list,
-        description="A direct plain-language answer. Use 2-4 short sentences for broad definitions "
-        "or comparisons, covering purpose and how it works when supported. Narrow facts may "
-        "be shorter. Empty only if not answerable.",
+        description="A direct plain-language answer, as complete as the question needs: short "
+        "for a narrow fact; what it is, how it works and the main conditions for a broad "
+        "question; every step in order for a detailed or step-by-step request. Empty only if "
+        "not answerable.",
     )
     key_considerations: list[DraftClaim] = Field(
         default_factory=list,
-        description="2-3 useful plain-language points when the sources support them; otherwise "
-        "fewer or none. Explain unfamiliar terms and do not repeat the explanation.",
+        description="Important conditions, exceptions or risks the explanation does not already "
+        "cover, when the sources support them; otherwise none. Explain unfamiliar terms and do "
+        "not repeat the explanation.",
     )
 
 

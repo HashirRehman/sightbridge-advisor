@@ -128,7 +128,7 @@ resource "aws_lambda_function" "api" {
   s3_key           = aws_s3_object.lambda_zip.key
   source_code_hash = filebase64sha256(var.lambda_zip_path)
   memory_size      = 1024
-  timeout          = 60 # Background worker; synchronous model calls retain their 20-second budget.
+  timeout          = 90 # Worker: 60 s model budget plus database work and cold start.
 
   logging_config {
     log_format = "Text" # the app already emits structured JSON lines
