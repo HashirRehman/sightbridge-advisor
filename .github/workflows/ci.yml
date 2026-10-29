@@ -11,6 +11,8 @@ permissions:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    env:
+      TEST_DATABASE_URL: postgresql+psycopg://sightbridge:sightbridge@localhost:5433/sightbridge_test
     defaults:
       run:
         working-directory: backend

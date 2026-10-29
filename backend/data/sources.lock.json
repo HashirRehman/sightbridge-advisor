@@ -1,0 +1,67 @@
+{
+  "irs-like-kind-real-estate-tips": {
+    "url": "https://www.irs.gov/businesses/small-businesses-self-employed/like-kind-exchanges-real-estate-tax-tips",
+    "sha256": "7f4fd70ae3fdd6c1156a39a32d53230cdb47698b89caacc59e1f0c4749fc11e5",
+    "retrieved_at": "2026-10-27"
+  },
+  "irs-like-kind-real-property-only": {
+    "url": "https://www.irs.gov/newsroom/like-kind-exchanges-now-limited-to-real-property",
+    "sha256": "28608145412955a4365503fcea3c45753c3d3adf87c2f0df3726151e943347e4",
+    "retrieved_at": "2026-10-27"
+  },
+  "irs-form-8824-instructions": {
+    "url": "https://www.irs.gov/instructions/i8824",
+    "sha256": "2b048ba3b2b0fb010f853090cfcbb852b9e812cf1b731727623e1f76c0b708cf",
+    "retrieved_at": "2026-10-27"
+  },
+  "irs-rev-rul-2004-86": {
+    "url": "https://home.treasury.gov/system/files/136/archive-documents/rr0486.pdf",
+    "sha256": "f4e844a2be6326f417ba317a1c18965aedc6fa6abd1efc7d89dab310d9822f74",
+    "retrieved_at": "2026-10-27"
+  },
+  "usc-26-1031": {
+    "url": "https://www.law.cornell.edu/uscode/text/26/1031",
+    "sha256": "5e0733ab1760980d44b6bd17f89be841d20f460842cc6cc217d56f50843e3b8b",
+    "retrieved_at": "2026-10-27"
+  },
+  "cfr-26-1-1031k-1": {
+    "url": "https://www.law.cornell.edu/cfr/text/26/1.1031(k)-1",
+    "sha256": "af58e75a56695c683f18d4b98a4af420aee248f97c598a0e57f551a7279415d0",
+    "retrieved_at": "2026-10-27"
+  },
+  "usc-26-721": {
+    "url": "https://www.law.cornell.edu/uscode/text/26/721",
+    "sha256": "4e634364d6db74ee7a1061ea9a03b188aa29e459ea8a57a0502925df96df1ee1",
+    "retrieved_at": "2026-10-27"
+  },
+  "franklin-templeton-721-upreit": {
+    "url": "https://www.franklintempleton.com/forms-literature/download/721-FL",
+    "sha256": "0403a81757132bcd9cc23a938fd89b264b81df924229d3694ee67c8246900c56",
+    "retrieved_at": "2026-10-27"
+  },
+  "investor-gov-reits": {
+    "url": "https://www.investor.gov/introduction-investing/investing-basics/investment-products/real-estate-investment-trusts-reits",
+    "sha256": "7fe13a3f74ade7e060617d1b3018cc43531d786c9abfd0b313b775c7d3d645ef",
+    "retrieved_at": "2026-10-27"
+  },
+  "investor-gov-reg-d-private-placements": {
+    "url": "https://www.investor.gov/introduction-investing/general-resources/news-alerts/alerts-bulletins/investor-bulletins/private-placements-under-regulation-d-updated-investor-bulletin",
+    "sha256": "fc2d5f00d337b03d7fb1837cc82e55a22b424ff6f33a9c0ca8a253d3bbd23045",
+    "retrieved_at": "2026-10-27"
+  },
+  "investor-gov-accredited-investors": {
+    "url": "https://www.investor.gov/introduction-investing/investing-basics/glossary/accredited-investors",
+    "sha256": "662c24273d650df7de2d8dd6f09ecafc71024b0e116504aded576faf7d98fa2b",
+    "retrieved_at": "2026-10-27"
+  },
+  "finra-regulatory-notice-05-18": {
+    "url": "https://www.finra.org/rules-guidance/notices/05-18",
+    "sha256": "917de79fa8ffdb85496b856462cab9b83a1f9654b56c00f1b1a5592ecb922f31",
+    "retrieved_at": "2026-10-27"
+  },
+  "kiplinger-dst-risks": {
+    "url": "https://www.kiplinger.com/retirement/risks-of-delaware-statutory-trusts-in-1031-exchanges",
+    "sha256": "6328c1996c18c64f535ab6faf32358514c876d61b065f6abb9981cce10d27afd",
+    "retrieved_at": "2026-10-27"
+  }
+}

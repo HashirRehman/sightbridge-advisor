@@ -29,3 +29,10 @@ def test_migrations_upgrade_downgrade_roundtrip() -> None:
 
 def test_single_migration_head() -> None:
     assert len(ScriptDirectory.from_config(_config()).get_heads()) == 1
+
+
+def test_orm_models_match_migrations() -> None:
+    """Fails if someone changes a model without generating a migration."""
+    cfg = _config()
+    command.upgrade(cfg, "head")
+    command.check(cfg)

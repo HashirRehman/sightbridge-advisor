@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -24,6 +24,8 @@ class Settings(BaseSettings):
 
     aws_region: str = "us-east-1"
     bedrock_chat_model_id: str = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+    # "local" = deterministic lexical embedder for dev/tests without AWS; refused in production.
+    embedding_provider: Literal["bedrock", "local"] = "bedrock"
     bedrock_embedding_model_id: str = "amazon.titan-embed-text-v2:0"
     embedding_dimensions: int = 1024
     bedrock_timeout_seconds: float = 20.0
@@ -44,6 +46,12 @@ class Settings(BaseSettings):
 
     rate_limit_per_minute: int = 6
     rate_limit_per_hour: int = 60
+
+    @model_validator(mode="after")
+    def production_guards(self) -> "Settings":
+        if self.environment == "production" and self.embedding_provider != "bedrock":
+            raise ValueError("production must use Bedrock embeddings")
+        return self
 
     @property
     def cors_origins(self) -> list[str]:

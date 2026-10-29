@@ -1,0 +1,153 @@
+{
+  "description": "Curated public corpus for Sightbridge Advisor Intelligence. Only these sources are ingested. Every URL was opened and its contents checked by hand before inclusion.",
+  "sources": [
+    {
+      "source_id": "irs-like-kind-real-estate-tips",
+      "title": "Like-kind exchanges – Real estate tax tips",
+      "publisher": "Internal Revenue Service",
+      "url": "https://www.irs.gov/businesses/small-businesses-self-employed/like-kind-exchanges-real-estate-tax-tips",
+      "document_type": "html",
+      "topics": [
+        "1031"
+      ],
+      "content_selector": "main"
+    },
+    {
+      "source_id": "irs-like-kind-real-property-only",
+      "title": "Like-kind exchanges now limited to real property",
+      "publisher": "Internal Revenue Service",
+      "url": "https://www.irs.gov/newsroom/like-kind-exchanges-now-limited-to-real-property",
+      "document_type": "html",
+      "topics": [
+        "1031"
+      ],
+      "content_selector": "main"
+    },
+    {
+      "source_id": "irs-form-8824-instructions",
+      "title": "Instructions for Form 8824, Like-Kind Exchanges",
+      "publisher": "Internal Revenue Service",
+      "url": "https://www.irs.gov/instructions/i8824",
+      "document_type": "html",
+      "topics": [
+        "1031"
+      ],
+      "content_selector": "main"
+    },
+    {
+      "source_id": "irs-rev-rul-2004-86",
+      "title": "Revenue Ruling 2004-86 (Delaware statutory trusts and § 1031)",
+      "publisher": "Internal Revenue Service (Internal Revenue Bulletin 2004-33; copy hosted by U.S. Treasury)",
+      "url": "https://home.treasury.gov/system/files/136/archive-documents/rr0486.pdf",
+      "document_type": "pdf",
+      "topics": [
+        "dst",
+        "1031"
+      ]
+    },
+    {
+      "source_id": "usc-26-1031",
+      "title": "26 U.S. Code § 1031 – Exchange of real property held for productive use or investment",
+      "publisher": "Legal Information Institute, Cornell Law School",
+      "url": "https://www.law.cornell.edu/uscode/text/26/1031",
+      "document_type": "html",
+      "topics": [
+        "1031"
+      ],
+      "content_selector": "#tab_default_1"
+    },
+    {
+      "source_id": "cfr-26-1-1031k-1",
+      "title": "26 CFR § 1.1031(k)-1 – Treatment of deferred exchanges",
+      "publisher": "Legal Information Institute, Cornell Law School",
+      "url": "https://www.law.cornell.edu/cfr/text/26/1.1031(k)-1",
+      "document_type": "html",
+      "topics": [
+        "1031"
+      ],
+      "content_selector": "#tab_default_1"
+    },
+    {
+      "source_id": "usc-26-721",
+      "title": "26 U.S. Code § 721 – Nonrecognition of gain or loss on contribution",
+      "publisher": "Legal Information Institute, Cornell Law School",
+      "url": "https://www.law.cornell.edu/uscode/text/26/721",
+      "document_type": "html",
+      "topics": [
+        "721"
+      ],
+      "content_selector": "#tab_default_1"
+    },
+    {
+      "source_id": "franklin-templeton-721-upreit",
+      "title": "721 Exchange/UPREIT",
+      "publisher": "Franklin Templeton",
+      "url": "https://www.franklintempleton.com/forms-literature/download/721-FL",
+      "document_type": "pdf",
+      "topics": [
+        "721",
+        "reit"
+      ]
+    },
+    {
+      "source_id": "investor-gov-reits",
+      "title": "Real Estate Investment Trusts (REITs)",
+      "publisher": "U.S. Securities and Exchange Commission (Investor.gov)",
+      "url": "https://www.investor.gov/introduction-investing/investing-basics/investment-products/real-estate-investment-trusts-reits",
+      "document_type": "html",
+      "topics": [
+        "reit",
+        "721"
+      ],
+      "content_selector": ".field--name-body"
+    },
+    {
+      "source_id": "investor-gov-reg-d-private-placements",
+      "title": "Private Placements under Regulation D – Updated Investor Bulletin",
+      "publisher": "U.S. Securities and Exchange Commission (Investor.gov)",
+      "url": "https://www.investor.gov/introduction-investing/general-resources/news-alerts/alerts-bulletins/investor-bulletins/private-placements-under-regulation-d-updated-investor-bulletin",
+      "document_type": "html",
+      "topics": [
+        "dst",
+        "regulatory"
+      ],
+      "content_selector": "article.node--type-news"
+    },
+    {
+      "source_id": "investor-gov-accredited-investors",
+      "title": "Accredited Investors (glossary)",
+      "publisher": "U.S. Securities and Exchange Commission (Investor.gov)",
+      "url": "https://www.investor.gov/introduction-investing/investing-basics/glossary/accredited-investors",
+      "document_type": "html",
+      "topics": [
+        "dst",
+        "regulatory"
+      ],
+      "content_selector": "article.node--type-glossary-term"
+    },
+    {
+      "source_id": "finra-regulatory-notice-05-18",
+      "title": "Regulatory Notice 05-18: Private Placements of Tenants-in-Common Interests",
+      "publisher": "FINRA (NASD)",
+      "url": "https://www.finra.org/rules-guidance/notices/05-18",
+      "document_type": "html",
+      "topics": [
+        "1031",
+        "regulatory"
+      ],
+      "content_selector": "main"
+    },
+    {
+      "source_id": "kiplinger-dst-risks",
+      "title": "Six Risks of Delaware Statutory Trusts in 1031 Exchanges",
+      "publisher": "Kiplinger",
+      "url": "https://www.kiplinger.com/retirement/risks-of-delaware-statutory-trusts-in-1031-exchanges",
+      "document_type": "html",
+      "topics": [
+        "dst",
+        "1031"
+      ],
+      "content_selector": "#article-body"
+    }
+  ]
+}

@@ -40,7 +40,7 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "S", "SIM", "RUF"]
-ignore = ["S101"]
+ignore = ["S101", "SIM905"]  # SIM905: word lists read better as "a b c".split()
 
 [tool.ruff.lint.isort]
 known-third-party = ["alembic"]
