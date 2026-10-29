@@ -1,7 +1,7 @@
 {
   "summary": {
     "label": "local-sim-0.15",
-    "run_at": "2026-10-27T13:32:32+00:00",
+    "run_at": "2026-10-27T13:52:24+00:00",
     "embedding_model": "local-hashing-v1-1024",
     "generator": "local-extractive-v1",
     "min_similarity": 0.15,
@@ -44,13 +44,12 @@
       "reason": null,
       "cited_sources": [
         "cfr-26-1-1031k-1",
-        "irs-form-8824-instructions",
-        "kiplinger-dst-risks"
+        "irs-form-8824-instructions"
       ],
       "source_ok": true,
       "dropped_claims": 0,
       "has_disclaimer": true,
-      "latency_ms": 52,
+      "latency_ms": 38,
       "tokens": null,
       "passed": true
     },
@@ -66,7 +65,7 @@
       "source_ok": true,
       "dropped_claims": 0,
       "has_disclaimer": true,
-      "latency_ms": 6,
+      "latency_ms": 5,
       "tokens": null,
       "passed": true
     },
@@ -83,7 +82,7 @@
       "source_ok": true,
       "dropped_claims": 0,
       "has_disclaimer": true,
-      "latency_ms": 4,
+      "latency_ms": 5,
       "tokens": null,
       "passed": true
     },
@@ -100,7 +99,7 @@
       "source_ok": true,
       "dropped_claims": 0,
       "has_disclaimer": true,
-      "latency_ms": 4,
+      "latency_ms": 6,
       "tokens": null,
       "passed": true
     },
@@ -117,7 +116,7 @@
       "source_ok": true,
       "dropped_claims": 0,
       "has_disclaimer": true,
-      "latency_ms": 4,
+      "latency_ms": 5,
       "tokens": null,
       "passed": true
     },
@@ -149,7 +148,7 @@
       "source_ok": true,
       "dropped_claims": 0,
       "has_disclaimer": true,
-      "latency_ms": 5,
+      "latency_ms": 4,
       "tokens": null,
       "passed": true
     },
@@ -182,7 +181,7 @@
       "source_ok": true,
       "dropped_claims": 0,
       "has_disclaimer": true,
-      "latency_ms": 5,
+      "latency_ms": 4,
       "tokens": null,
       "passed": true
     },
@@ -211,13 +210,12 @@
       "reason": null,
       "cited_sources": [
         "irs-form-8824-instructions",
-        "irs-like-kind-real-estate-tips",
-        "kiplinger-dst-risks"
+        "irs-like-kind-real-estate-tips"
       ],
       "source_ok": true,
       "dropped_claims": 0,
       "has_disclaimer": true,
-      "latency_ms": 5,
+      "latency_ms": 4,
       "tokens": null,
       "passed": true
     },
@@ -234,7 +232,7 @@
       "source_ok": true,
       "dropped_claims": 0,
       "has_disclaimer": true,
-      "latency_ms": 8,
+      "latency_ms": 5,
       "tokens": null,
       "passed": true
     },
@@ -375,7 +373,7 @@
       "source_ok": null,
       "dropped_claims": 0,
       "has_disclaimer": true,
-      "latency_ms": 4,
+      "latency_ms": 3,
       "tokens": null,
       "passed": true
     },

@@ -5,9 +5,9 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.domain.models.documents import ChunkDraft, TextSection
 
-# Bump when chunking behaviour changes: it is part of the ingest signature, so a bump
-# forces re-ingestion of every document.
-CHUNKER_VERSION = "v1-1200-200"
+# Bump when extraction or chunking behaviour changes: it is part of the ingest signature,
+# so a bump forces re-ingestion of every document.
+CHUNKER_VERSION = "v2-1200-200"
 CHUNK_SIZE = 1200
 CHUNK_OVERLAP = 200
 # Sections shorter than this are merged with the following section on the same page.

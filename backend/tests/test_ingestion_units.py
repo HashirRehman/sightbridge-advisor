@@ -50,6 +50,8 @@ def test_html_extraction_keeps_headings_and_inline_text_drops_chrome() -> None:
       <h2>Deferred exchanges</h2>
       <p>Identify property within <a href="#">45 days</a> of the transfer.</p>
       <p>Share this article</p>
+      <ul><li><a href="/a">Related one</a></li><li><a href="/b">Related two</a></li></ul>
+      <ul><li>Keep content lists like <a href="#">this one</a> with prose.</li></ul>
       <h2>Basis</h2><p>Basis carries over.</p>
       <footer>Footer</footer></main></body></html>"""
 
@@ -57,7 +59,9 @@ def test_html_extraction_keeps_headings_and_inline_text_drops_chrome() -> None:
 
     assert sections == [
         TextSection(
-            text="Identify property within 45 days of the transfer.", section="Deferred exchanges"
+            text="Identify property within 45 days of the transfer.\n"
+            "Keep content lists like this one with prose.",
+            section="Deferred exchanges",
         ),
         TextSection(text="Basis carries over.", section="Basis"),
     ]

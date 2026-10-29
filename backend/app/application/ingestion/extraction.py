@@ -33,6 +33,12 @@ _BOILERPLATE_LINES = {
 _WS = re.compile("[ \t\u00a0\u2009\u200b]+")
 
 
+def _is_link_only(item: Tag) -> bool:
+    links = item.find_all("a")
+    text = item.get_text(" ", strip=True)
+    return len(links) == 1 and text == links[0].get_text(" ", strip=True)
+
+
 def _clean_line(line: str) -> str:
     return _WS.sub(" ", line).strip()
 
@@ -45,6 +51,11 @@ def extract_html(html: bytes, selector: str) -> list[TextSection]:
 
     for tag in root.find_all(_DROP_TAGS):
         tag.decompose()
+    # Lists whose every item is just a link are navigation ("Related articles"), not content.
+    for lst in root.find_all(["ul", "ol"]):
+        items = lst.find_all("li", recursive=False)
+        if items and all(_is_link_only(li) for li in items):
+            lst.decompose()
     # Newlines around block elements only, so inline links/emphasis stay in their sentence.
     for tag in root.find_all(_BLOCK_TAGS):
         if not isinstance(tag, Tag):
