@@ -33,3 +33,11 @@ infra/cdk/cdk.out/
 .DS_Store
 .idea/
 .vscode/
+
+# Terraform
+infra/terraform/.terraform/
+infra/terraform/*.tfstate*
+infra/terraform/terraform.tfvars
+infra/terraform/backend.hcl
+infra/terraform/*.tfplan
+backend/dist/

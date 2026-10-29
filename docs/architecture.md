@@ -16,7 +16,7 @@ Browser ──HTTPS──▶ Next.js (Amplify Hosting)
                                        2. AdvicePolicy (deterministic: injection, personalised advice, scope)
                                        3. embed question (Bedrock Titan v2)
                                        4. pgvector top-k + similarity floor
-                                       5. generate structured answer (Bedrock Claude Haiku via LangChain)
+                                       5. generate structured answer (Bedrock Nova Lite, DeepSeek V3.2 fallback, via LangChain)
                                        6. CitationVerifier (passage id ∈ retrieved, quote ∈ passage text)
                                        7. append disclaimer (code, not model)
                                        8. persist exchange (audit) in one transaction

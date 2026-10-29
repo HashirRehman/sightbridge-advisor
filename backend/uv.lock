@@ -1715,7 +1715,6 @@ dependencies = [
     { name = "pyjwt", extra = ["crypto"] },
     { name = "pypdf" },
     { name = "sqlalchemy" },
-    { name = "uvicorn", extra = ["standard"] },
 ]
 
 [package.dev-dependencies]
@@ -1724,6 +1723,7 @@ dev = [
     { name = "mypy" },
     { name = "pytest" },
     { name = "ruff" },
+    { name = "uvicorn", extra = ["standard"] },
 ]
 
 [package.metadata]
@@ -1744,7 +1744,6 @@ requires-dist = [
     { name = "pyjwt", extras = ["crypto"], specifier = ">=2.15,<3" },
     { name = "pypdf", specifier = ">=6.21,<7" },
     { name = "sqlalchemy", specifier = ">=2.1,<2.2" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.34" },
 ]
 
 [package.metadata.requires-dev]
@@ -1753,6 +1752,7 @@ dev = [
     { name = "mypy", specifier = ">=1.18" },
     { name = "pytest", specifier = ">=8.4" },
     { name = "ruff", specifier = ">=0.14" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.34" },
 ]
 
 [[package]]

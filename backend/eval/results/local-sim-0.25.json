@@ -1,7 +1,7 @@
 {
   "summary": {
     "label": "local-sim-0.25",
-    "run_at": "2026-10-27T13:52:26+00:00",
+    "run_at": "2026-10-27T14:39:42+00:00",
     "embedding_model": "local-hashing-v1-1024",
     "generator": "local-extractive-v1",
     "min_similarity": 0.25,
@@ -50,7 +50,7 @@
       "source_ok": false,
       "dropped_claims": 0,
       "has_disclaimer": true,
-      "latency_ms": 32,
+      "latency_ms": 37,
       "tokens": null,
       "passed": false
     },
@@ -117,7 +117,7 @@
       "source_ok": true,
       "dropped_claims": 0,
       "has_disclaimer": true,
-      "latency_ms": 5,
+      "latency_ms": 4,
       "tokens": null,
       "passed": true
     },
@@ -179,7 +179,7 @@
       "source_ok": false,
       "dropped_claims": 0,
       "has_disclaimer": true,
-      "latency_ms": 3,
+      "latency_ms": 5,
       "tokens": null,
       "passed": false
     },
@@ -193,7 +193,7 @@
       "source_ok": false,
       "dropped_claims": 0,
       "has_disclaimer": true,
-      "latency_ms": 5,
+      "latency_ms": 3,
       "tokens": null,
       "passed": false
     },
@@ -226,7 +226,7 @@
       "source_ok": true,
       "dropped_claims": 0,
       "has_disclaimer": true,
-      "latency_ms": 4,
+      "latency_ms": 5,
       "tokens": null,
       "passed": true
     },
@@ -260,7 +260,7 @@
       "source_ok": true,
       "dropped_claims": 0,
       "has_disclaimer": true,
-      "latency_ms": 5,
+      "latency_ms": 4,
       "tokens": null,
       "passed": true
     },
@@ -276,7 +276,7 @@
       "source_ok": null,
       "dropped_claims": 0,
       "has_disclaimer": true,
-      "latency_ms": 15,
+      "latency_ms": 22,
       "tokens": null,
       "passed": false
     },
@@ -290,7 +290,7 @@
       "source_ok": null,
       "dropped_claims": 0,
       "has_disclaimer": true,
-      "latency_ms": 7,
+      "latency_ms": 6,
       "tokens": null,
       "passed": true
     },
@@ -348,7 +348,7 @@
       "source_ok": null,
       "dropped_claims": 0,
       "has_disclaimer": true,
-      "latency_ms": 3,
+      "latency_ms": 5,
       "tokens": null,
       "passed": true
     },
@@ -362,7 +362,7 @@
       "source_ok": null,
       "dropped_claims": 0,
       "has_disclaimer": true,
-      "latency_ms": 3,
+      "latency_ms": 5,
       "tokens": null,
       "passed": true
     },
@@ -376,7 +376,7 @@
       "source_ok": null,
       "dropped_claims": 0,
       "has_disclaimer": true,
-      "latency_ms": 3,
+      "latency_ms": 4,
       "tokens": null,
       "passed": true
     },

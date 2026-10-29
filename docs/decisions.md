@@ -55,9 +55,15 @@ Short records of decisions that shaped the build. Format: decision, reason, alte
   - Regex rules can miss novel phrasings and occasionally over-refuse. They are listed in one file and covered by a table-driven test.
   - Quote verification proves traceability, not truth. Admin review of the audit log covers the residual risk.
 
-### D10. Model choice: Claude Haiku on Bedrock, temperature 0, max 900 output tokens
-- **Reason:** It is the cheapest current Claude tier with reliable tool-use structured output, a good fit for short, grounded explanations. The model ID is configuration (`BEDROCK_CHAT_MODEL_ID`) and is verified against the account's model access before deployment.
-- **Alternatives:** Amazon Nova Lite/Micro (cheaper, weaker at exact quoting), Sonnet (better but several times the cost).
+### D10. Models: Amazon Nova Lite primary, DeepSeek V3.2 fallback, temperature 0, max 900 output tokens
+- **Reason:**
+  - The account is on the AWS Free plan (credits only).
+  - Anthropic models show `agreementAvailability: NOT_AVAILABLE` there, while first-party Bedrock models (Nova, DeepSeek, Titan) need no Marketplace agreement.
+  - Nova Lite is among the cheapest Bedrock models, about $0.06/$0.24 per 1M input/output tokens on third-party price trackers, and it supports the forced tool use our structured output relies on.
+  - DeepSeek V3.2, from a different vendor, is used **only** when Nova errors or is throttled.
+  - Both go through the identical citation verifier, and `exchanges.model_id` records which model answered.
+- **Alternatives:** Claude Haiku (stronger at exact quoting, unavailable on this account), Nova Micro (cheaper still, weaker), DeepSeek R1 (reasoning model: slow and no forced tool choice).
+- **Validation:** the eval set is run against each model separately, and results are recorded in `backend/eval/results/`.
 
 ### D11. Authentication and authorisation
 - **Production:** Cognito **ID tokens** (they carry `email`, `aud` = app client, and `cognito:groups`), verified server-side on every request:
@@ -76,3 +82,15 @@ Short records of decisions that shaped the build. Format: decision, reason, alte
   - Everything that passes validation, authorisation and rate limiting is recorded, including unexpected crashes, which are logged as `failed`.
 - **Rate limiting:** a per-user count of recent exchanges (6/min, 60/hour). It is stateless, so it works across Lambda instances with no Redis. It isn't atomic under concurrent bursts, which is acceptable for a pilot.
 - **Alternatives:** separate `messages` + `audit_logs` tables (duplication, drift risk); an external rate limiter (more infrastructure).
+
+### D13. Terraform, free-tier network shape, SSM for secrets
+- **Terraform instead of CDK:** owner's preference, and it matches their other projects.
+- **Network:** Lambda runs outside a VPC and RDS is public, with TLS enforced and a generated password.
+  - Inside a VPC, Lambda would need a NAT Gateway (about $32/month) or interface endpoints (about $7/month each) to reach Bedrock and Cognito. That is not free-tier compatible, and the account runs on Free-plan credits.
+  - Private subnets are the production path (docs/deployment.md).
+- **Secrets:** SSM Parameter Store SecureString rather than Secrets Manager (free versus $0.40 per secret per month). The API reads its URL at cold start, so credentials never appear in Lambda env vars.
+  - The API connects as `sightbridge_app`: SELECT on the corpus, write on conversations, append-only on exchanges. Migrations and ingestion use the admin URL from the operator's machine only.
+- **Packaging:** `uv pip install --python-platform aarch64-manylinux_2_28` builds the arm64 zip without Docker.
+  - botocore models are trimmed to the 7 services used, and uvicorn is dev-only: 45 MB zipped, 174 MB unzipped.
+  - Verified by invoking the handler inside `public.ecr.aws/lambda/python:3.12-arm64`.
+- **Tradeoff:** Terraform state contains the generated passwords, so it lives in a private, versioned, encrypted S3 bucket.

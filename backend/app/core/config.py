@@ -18,6 +18,10 @@ class Settings(BaseSettings):
         "postgresql+psycopg://sightbridge:sightbridge@localhost:5432/sightbridge"
     )
 
+    # Production: name of an SSM SecureString holding the database URL, read once at cold
+    # start, so the credential never sits in Lambda environment variables.
+    database_url_ssm_parameter: str = ""
+
     # Comma-separated list; the browser never calls the API directly in production
     # (the Next.js server proxies), so this stays narrow.
     cors_allowed_origins: str = "http://localhost:3000"
@@ -25,7 +29,9 @@ class Settings(BaseSettings):
     aws_region: str = "us-east-1"
     # "local" = extractive stand-in for dev without AWS; refused in production.
     llm_provider: Literal["bedrock", "local"] = "bedrock"
-    bedrock_chat_model_id: str = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+    # Primary: Amazon Nova Lite. Fallback (on errors only): DeepSeek V3.2. Empty disables it.
+    bedrock_chat_model_id: str = "us.amazon.nova-lite-v1:0"
+    bedrock_fallback_chat_model_id: str = "deepseek.v3.2"
     # "local" = deterministic lexical embedder for dev/tests without AWS; refused in production.
     embedding_provider: Literal["bedrock", "local"] = "bedrock"
     bedrock_embedding_model_id: str = "amazon.titan-embed-text-v2:0"

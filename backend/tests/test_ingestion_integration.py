@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.application.ingestion.fetcher import FetchedSource, FetchError
 from app.application.ingestion.manifest import SourceManifest, SourceSpec
 from app.application.ingestion.service import IngestionService
-from app.infrastructure.database.models import DocumentChunk, IngestionRun
+from app.infrastructure.database.models import Document, DocumentChunk, IngestionRun
 from app.infrastructure.database.session import get_session_factory
 from app.infrastructure.retrieval.local_embedder import LocalHashingEmbedder
 from app.infrastructure.retrieval.pgvector_retriever import PgVectorPassageRetriever
@@ -136,3 +136,18 @@ def test_retrieval_returns_relevant_passage_with_source_metadata(
     assert hits[0].similarity >= hits[1].similarity
     assert strict == []
     assert other_model == []  # vectors from different embedding models are never mixed
+
+
+def test_metadata_correction_is_reingested_not_skipped(
+    session_factory: sessionmaker[Session],
+) -> None:
+    fetcher = FakeFetcher(dict(PAGES))
+    manifest = _manifest("irs-tips")
+    _service(session_factory, fetcher).ingest_all(manifest)
+
+    corrected = manifest.sources[0].model_copy(update={"title": "Corrected Title"})
+    result = _service(session_factory, fetcher).ingest_one(corrected)
+
+    assert result.status == "ingested"
+    with session_factory() as s:
+        assert s.get(Document, "irs-tips").title == "Corrected Title"  # type: ignore[union-attr]

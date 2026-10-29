@@ -8,7 +8,7 @@ from app.domain.models.answers import TokenUsage
 from app.infrastructure.bedrock.generator import BedrockAnswerGenerator
 from tests.factories import IDENTIFICATION_TEXT, passage
 
-MODEL = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+MODEL = "us.amazon.nova-lite-v1:0"
 
 
 class FakeConverseClient:

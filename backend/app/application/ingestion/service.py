@@ -33,10 +33,12 @@ class SourceResult:
     error: str | None = None
 
 
-def ingest_signature(content_hash: str, embedding_model: str) -> str:
-    return hashlib.sha256(
-        f"{content_hash}|{CHUNKER_VERSION}|{embedding_model}".encode()
-    ).hexdigest()
+def ingest_signature(spec: SourceSpec, content_hash: str, embedding_model: str) -> str:
+    """Changes when content, pipeline, model or citation metadata change. The title is part
+    of every chunk's embedding header, so metadata edits must re-ingest, not be skipped."""
+    metadata = f"{spec.title}|{spec.publisher}|{spec.url}|{','.join(spec.topics)}"
+    key = f"{content_hash}|{CHUNKER_VERSION}|{embedding_model}|{metadata}"
+    return hashlib.sha256(key.encode()).hexdigest()
 
 
 class IngestionService:
@@ -63,7 +65,7 @@ class IngestionService:
         fetched: FetchedSource | None = None
         try:
             fetched = self._fetcher.fetch(spec)
-            signature = ingest_signature(fetched.sha256, self._embedder.model_id)
+            signature = ingest_signature(spec, fetched.sha256, self._embedder.model_id)
 
             with self._session_factory() as session:
                 repo = DocumentRepository(session)

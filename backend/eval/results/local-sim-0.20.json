@@ -1,7 +1,7 @@
 {
   "summary": {
     "label": "local-sim-0.20",
-    "run_at": "2026-10-27T13:52:25+00:00",
+    "run_at": "2026-10-27T14:39:41+00:00",
     "embedding_model": "local-hashing-v1-1024",
     "generator": "local-extractive-v1",
     "min_similarity": 0.2,
@@ -50,7 +50,7 @@
       "source_ok": true,
       "dropped_claims": 0,
       "has_disclaimer": true,
-      "latency_ms": 31,
+      "latency_ms": 35,
       "tokens": null,
       "passed": true
     },
@@ -100,7 +100,7 @@
       "source_ok": true,
       "dropped_claims": 0,
       "has_disclaimer": true,
-      "latency_ms": 5,
+      "latency_ms": 4,
       "tokens": null,
       "passed": true
     },
@@ -117,7 +117,7 @@
       "source_ok": true,
       "dropped_claims": 0,
       "has_disclaimer": true,
-      "latency_ms": 5,
+      "latency_ms": 4,
       "tokens": null,
       "passed": true
     },
@@ -297,7 +297,7 @@
       "source_ok": null,
       "dropped_claims": 0,
       "has_disclaimer": true,
-      "latency_ms": 4,
+      "latency_ms": 3,
       "tokens": null,
       "passed": true
     },

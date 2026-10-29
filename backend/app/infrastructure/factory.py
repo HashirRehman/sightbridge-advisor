@@ -3,6 +3,7 @@
 import boto3
 from sqlalchemy.orm import Session
 
+from app.application.rag.fallback import FallbackAnswerGenerator
 from app.application.rag.service import AnswerService
 from app.core.config import Settings
 from app.domain.interfaces.embedding import Embedder
@@ -38,12 +39,15 @@ def build_object_store(settings: Settings) -> ObjectStore:
 def build_generator(settings: Settings) -> AnswerGenerator:
     if settings.llm_provider == "local":
         return LocalExtractiveGenerator()
-    return BedrockAnswerGenerator(
-        build_bedrock_runtime_client(settings),
-        settings.bedrock_chat_model_id,
-        settings.max_output_tokens,
-        settings.aws_region,
-    )
+    client = build_bedrock_runtime_client(settings)
+    model_ids = [settings.bedrock_chat_model_id]
+    if settings.bedrock_fallback_chat_model_id:
+        model_ids.append(settings.bedrock_fallback_chat_model_id)
+    generators: list[AnswerGenerator] = [
+        BedrockAnswerGenerator(client, model_id, settings.max_output_tokens, settings.aws_region)
+        for model_id in model_ids
+    ]
+    return generators[0] if len(generators) == 1 else FallbackAnswerGenerator(generators)
 
 
 def build_answer_service(
