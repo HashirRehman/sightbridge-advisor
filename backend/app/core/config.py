@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     cors_allowed_origins: str = "http://localhost:3000"
 
     aws_region: str = "us-east-1"
+    # "local" = extractive stand-in for dev without AWS; refused in production.
+    llm_provider: Literal["bedrock", "local"] = "bedrock"
     bedrock_chat_model_id: str = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
     # "local" = deterministic lexical embedder for dev/tests without AWS; refused in production.
     embedding_provider: Literal["bedrock", "local"] = "bedrock"
@@ -49,8 +51,10 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def production_guards(self) -> "Settings":
-        if self.environment == "production" and self.embedding_provider != "bedrock":
-            raise ValueError("production must use Bedrock embeddings")
+        if self.environment == "production" and (
+            self.embedding_provider != "bedrock" or self.llm_provider != "bedrock"
+        ):
+            raise ValueError("production must use Bedrock for embeddings and generation")
         return self
 
     @property

@@ -1,0 +1,59 @@
+import logging
+from typing import Any
+
+from botocore.exceptions import BotoCoreError, ClientError
+from langchain_aws import ChatBedrockConverse
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from pydantic import ValidationError
+
+from app.application.rag.prompts import SYSTEM_PROMPT, render_user_message
+from app.domain.interfaces.generation import GenerationError, GenerationMode, GenerationResult
+from app.domain.models.answers import AnswerDraft, LabeledPassage, TokenUsage
+
+logger = logging.getLogger(__name__)
+
+
+class BedrockAnswerGenerator:
+    """Claude on Bedrock (Converse API) via LangChain, forced into the AnswerDraft schema."""
+
+    def __init__(self, client: Any, model_id: str, max_tokens: int, region_name: str) -> None:
+        self._model_id = model_id
+        llm = ChatBedrockConverse(
+            client=client,
+            region_name=region_name,
+            model_id=model_id,
+            max_tokens=max_tokens,
+            temperature=0.0,
+        )
+        self._chain = llm.with_structured_output(AnswerDraft, include_raw=True)
+
+    def generate(
+        self, question: str, passages: list[LabeledPassage], mode: GenerationMode
+    ) -> GenerationResult:
+        messages = [
+            SystemMessage(SYSTEM_PROMPT),
+            HumanMessage(render_user_message(question, passages, mode)),
+        ]
+        try:
+            result: dict[str, Any] = self._chain.invoke(messages)  # type: ignore[assignment]
+        except (ClientError, BotoCoreError) as exc:
+            code = exc.response["Error"]["Code"] if isinstance(exc, ClientError) else "transport"
+            logger.warning("bedrock invocation failed", extra={"error_code": code})
+            raise GenerationError(f"bedrock error: {code}") from exc
+
+        parsed = result.get("parsed")
+        if not isinstance(parsed, AnswerDraft):
+            error = result.get("parsing_error")
+            logger.warning("model output failed schema validation", extra={"error": str(error)})
+            raise GenerationError("model returned malformed structured output") from (
+                error if isinstance(error, (ValidationError, Exception)) else None
+            )
+
+        raw = result.get("raw")
+        usage = None
+        if isinstance(raw, AIMessage) and raw.usage_metadata:
+            usage = TokenUsage(
+                input_tokens=raw.usage_metadata["input_tokens"],
+                output_tokens=raw.usage_metadata["output_tokens"],
+            )
+        return GenerationResult(draft=parsed, model_id=self._model_id, usage=usage)

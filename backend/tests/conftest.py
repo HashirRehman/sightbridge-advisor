@@ -3,6 +3,13 @@ import os
 # Must be set before any app module reads settings.
 os.environ.setdefault("ENVIRONMENT", "test")
 os.environ["EMBEDDING_PROVIDER"] = "local"
+os.environ["LLM_PROVIDER"] = "local"
+# Tests must never reach a real AWS account: dummy credentials, no profile, no IMDS lookup.
+os.environ.pop("AWS_PROFILE", None)
+os.environ["AWS_ACCESS_KEY_ID"] = "testing"
+os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
+os.environ["AWS_EC2_METADATA_DISABLED"] = "true"
+os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
 # Always the dedicated test database — integration tests TRUNCATE tables.
 os.environ["DATABASE_URL"] = os.environ.get(
     "TEST_DATABASE_URL",

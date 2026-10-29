@@ -38,3 +38,23 @@ Short records of decisions that shaped the build. Format: decision, reason, alte
 ### D8. Chunking: 1200 chars, 200 overlap, never across a page or heading
 - **Reason:** Each chunk has exactly one citable location (PDF page or HTML section). Overlap preserves sentence context at boundaries. Sections under 300 chars are merged forward to avoid fragment chunks. A short "title — section" header is embedded with each chunk but not stored in its text, so quote verification runs against the original text.
 - **Idempotency:** `ingest_signature = sha256(content_hash | chunker version | embedding model)`. Unchanged sources are skipped, and any change atomically replaces that document's chunks in one transaction.
+
+### D9. Layered, mostly deterministic answer safety
+- **Pipeline:**
+  1. A regex policy (prompt injection → personalised advice → explicit out-of-scope topics) runs **before** any model call.
+  2. A retrieval similarity floor checks there is evidence.
+  3. The model returns structured output (`answerable` plus claims, each with `{passage_id, verbatim quote}`).
+  4. Code verifies citations: the passage was retrieved, the quote appears in its stored text, the claim overlaps the passage lexically, and the claim contains no advice phrasing.
+  5. Code adds the disclaimer.
+- **Personalised requests** get a fixed decline, plus general education only when it survives verification. Their status stays `refused` so admins see the policy fired.
+- **Why not prompt-only:** prompts are probabilistic. The refusals that matter (injection, advice, scope) and the "no fabricated citation is ever shown" guarantee are enforced in code and unit-tested.
+- **Evidence (eval/README.md):**
+  - A similarity floor alone can't separate related-but-unanswerable questions from answerable ones. At 0.20, two of three gap questions retrieve on-topic passages.
+  - So the model's `answerable` flag and claim verification form the second layer. The floor is per embedding model: 0.20 for the local embedder, and Titan is to be calibrated.
+- **Tradeoff:**
+  - Regex rules can miss novel phrasings and occasionally over-refuse. They are listed in one file and covered by a table-driven test.
+  - Quote verification proves traceability, not truth. Admin review of the audit log covers the residual risk.
+
+### D10. Model choice: Claude Haiku on Bedrock, temperature 0, max 900 output tokens
+- **Reason:** It is the cheapest current Claude tier with reliable tool-use structured output, a good fit for short, grounded explanations. The model ID is configuration (`BEDROCK_CHAT_MODEL_ID`) and is verified against the account's model access before deployment.
+- **Alternatives:** Amazon Nova Lite/Micro (cheaper, weaker at exact quoting), Sonnet (better but several times the cost).

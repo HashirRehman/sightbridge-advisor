@@ -1,0 +1,109 @@
+"""Deterministic pre-generation policy. Runs before any model call, so critical refusals never
+depend on the model following its prompt.
+
+Order matters: injection → personalised advice → scope.
+"""
+
+import re
+from dataclasses import dataclass
+from enum import StrEnum
+
+
+class PolicyOutcome(StrEnum):
+    ALLOW = "allow"
+    PROMPT_INJECTION = "prompt_injection"
+    PERSONALIZED_ADVICE = "personalized_advice"
+    OUT_OF_SCOPE = "out_of_scope"
+
+
+@dataclass(frozen=True, slots=True)
+class PolicyDecision:
+    outcome: PolicyOutcome
+    in_scope_terms: bool  # mentions 1031/DST/721/REIT vocabulary
+    matched_rule: str | None = None
+
+
+def _rx(*patterns: str) -> list[tuple[str, re.Pattern[str]]]:
+    return [(p, re.compile(p, re.IGNORECASE)) for p in patterns]
+
+
+_INJECTION = _rx(
+    r"\b(ignore|disregard|forget|override)\b.{0,40}\b(previous|prior|above|earlier|all|your|system)\b.{0,20}\b(instructions?|rules|prompts?|guidelines|directions)",
+    r"\b(reveal|show|print|repeat|output|tell me)\b.{0,30}\b(system prompt|hidden prompt|instructions|your prompt|your rules)",
+    r"\bsystem prompt\b",
+    r"\byou are (now|no longer)\b",
+    r"\b(pretend|act|behave) (to be|as if|as an?|like)\b",
+    r"\b(developer|god|dan|jailbreak) mode\b|\bjailbreak\b",
+    r"\bnew (instructions|rules|persona)\b",
+    r"</?\s*(system|assistant|instructions?)\s*>",
+    r"\b(without|no) (disclaimers?|restrictions|guardrails|filters)\b",
+)  # fmt: skip
+
+_PERSONALIZED = _rx(
+    # Requests for a recommendation or decision.
+    r"\bshould (i|we|my clients?|our clients?|they|he|she)\b",
+    r"\b(do|would|can) you (recommend|suggest|advise)\b",
+    r"\b(recommend|suggest)\b.{0,40}\b(for|to) (me|us|my|our)\b",
+    r"\bwhat (should|would you have) (i|we|my clients?)\b",
+    r"\bwhat would you do\b",
+    r"\b(good|bad|wise|smart|right|best|better|suitable) (idea|choice|option|investment|move|fit) for (me|us|my|our)\b",
+    r"\bis (it|this|that|a dst|a 1031|a 721)\b.{0,40}\b(right|suitable|appropriate|good|wise|smart) for (me|us|my|our)\b",
+    # Personal figures or tax computations.
+    r"\b(i|my|we|our)\b[^.?!]{0,60}\$\s?\d",
+    r"\$\s?\d[\d,.]*\s*(k|m|million|thousand)?\b[^.?!]{0,60}\b(i|my|we|our)\b",
+    r"\bhow much (tax|taxes)?\s?(will|would|do|should|can|could) (i|we|my clients?)\b",
+    r"\b(calculate|compute|estimate|figure out) (my|our|my client'?s?)\b",
+    r"\bmy (tax|taxes|tax bill|tax liability|tax situation|basis|capital gains?|portfolio)\b",
+    # Picking specific products, sponsors or eligibility determinations.
+    r"\bwhich (dst|reit|sponsor|fund|property|offering|investment|program)s?\b.{0,30}\b(should|best|buy|choose|pick)\b",
+    r"\b(best|top|safest) (dst|reit|sponsor|offering|program)s?\b",
+    r"\b(am i|are we|is my client|are my clients|do i|does my client) (an? )?(accredited|eligible|qualif)",
+)  # fmt: skip
+
+_IN_SCOPE = re.compile(
+    r"\b(1031|721|like[- ]kind|exchange|exchanges|exchanger|dsts?|delaware statutory|statutory trust|"
+    r"reits?|upreit|downreit|operating partnership|op units?|replacement property|relinquished|"
+    r"qualified intermediary|boot|identification period|exchange period|45[- ]day|180[- ]day|"
+    r"tenants?[- ]in[- ]common|tic|accredited investor|private placement|regulation d|reg d|"
+    r"rev(enue)?\.? rul(ing)?\.? 2004-86|section 1031|section 721|deferred gain|capital gains? deferral|"
+    r"carryover basis|form 8824|master lease|sponsor)\b",
+    re.IGNORECASE,
+)
+
+# Topics Sightbridge or advisors may raise but that this assistant deliberately does not cover.
+_OUT_OF_SCOPE = re.compile(
+    r"\b(opportunity zones?|qualified opportunity funds?|qofs?|crypto(currency)?|bitcoin|"
+    r"ethereum|stocks?|options trading|forex|401\s?\(?k\)?|ira|roth|annuit(y|ies)|life insurance|"
+    r"mortgage rates?|weather|recipe|sports?|election|poem|joke)\b",
+    re.IGNORECASE,
+)
+
+# Advice phrasing that must never appear in a generated answer, whatever the question was.
+_ADVICE_LANGUAGE = _rx(
+    r"\b(you|your clients?) should (invest|buy|sell|choose|consider investing|do)\b",
+    r"\bI (would )?(recommend|suggest|advise)\b",
+    r"\bwe (would )?(recommend|suggest|advise)\b",
+    r"\b(is|would be) (a )?(good|great|suitable|right|smart|wise) (fit|choice|option|investment|idea) for you\b",
+    r"\byour \$\s?\d",
+)  # fmt: skip
+
+
+def _first_match(rules: list[tuple[str, re.Pattern[str]]], text: str) -> str | None:
+    return next((name for name, rx in rules if rx.search(text)), None)
+
+
+def evaluate_question(question: str) -> PolicyDecision:
+    in_scope = bool(_IN_SCOPE.search(question))
+
+    if rule := _first_match(_INJECTION, question):
+        return PolicyDecision(PolicyOutcome.PROMPT_INJECTION, in_scope, rule)
+    if rule := _first_match(_PERSONALIZED, question):
+        return PolicyDecision(PolicyOutcome.PERSONALIZED_ADVICE, in_scope, rule)
+    if not in_scope and (m := _OUT_OF_SCOPE.search(question)):
+        return PolicyDecision(PolicyOutcome.OUT_OF_SCOPE, in_scope, m.group(0).lower())
+    # Questions with no topical vocabulary are still allowed through: retrieval decides.
+    return PolicyDecision(PolicyOutcome.ALLOW, in_scope)
+
+
+def contains_advice_language(text: str) -> bool:
+    return _first_match(_ADVICE_LANGUAGE, text) is not None

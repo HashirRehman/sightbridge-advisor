@@ -1,13 +1,19 @@
 """Composition root for infrastructure adapters chosen by configuration."""
 
 import boto3
+from sqlalchemy.orm import Session
 
+from app.application.rag.service import AnswerService
 from app.core.config import Settings
 from app.domain.interfaces.embedding import Embedder
+from app.domain.interfaces.generation import AnswerGenerator
 from app.domain.interfaces.storage import ObjectStore
 from app.infrastructure.bedrock.client import build_bedrock_runtime_client
 from app.infrastructure.bedrock.embeddings import BedrockTitanEmbedder
+from app.infrastructure.bedrock.generator import BedrockAnswerGenerator
 from app.infrastructure.retrieval.local_embedder import LocalHashingEmbedder
+from app.infrastructure.retrieval.local_generator import LocalExtractiveGenerator
+from app.infrastructure.retrieval.pgvector_retriever import PgVectorPassageRetriever
 from app.infrastructure.storage import NullObjectStore, S3ObjectStore
 
 
@@ -26,4 +32,27 @@ def build_object_store(settings: Settings) -> ObjectStore:
         return NullObjectStore()
     return S3ObjectStore(
         boto3.client("s3", region_name=settings.aws_region), settings.documents_bucket
+    )
+
+
+def build_generator(settings: Settings) -> AnswerGenerator:
+    if settings.llm_provider == "local":
+        return LocalExtractiveGenerator()
+    return BedrockAnswerGenerator(
+        build_bedrock_runtime_client(settings),
+        settings.bedrock_chat_model_id,
+        settings.max_output_tokens,
+        settings.aws_region,
+    )
+
+
+def build_answer_service(
+    session: Session, settings: Settings, embedder: Embedder, generator: AnswerGenerator
+) -> AnswerService:
+    return AnswerService(
+        embedder,
+        PgVectorPassageRetriever(session, embedder.model_id),
+        generator,
+        top_k=settings.retrieval_top_k,
+        min_similarity=settings.retrieval_min_similarity,
     )
