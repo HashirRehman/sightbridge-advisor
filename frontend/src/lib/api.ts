@@ -18,6 +18,7 @@ export type Citation = {
 
 export type Exchange = {
   activity?: ActivityStep[];
+  model_usage?: ModelCallUsage[];
   id: string;
   conversation_id: string;
   question: string;
@@ -31,6 +32,18 @@ export type Exchange = {
   created_at: string;
 };
 
+export type ModelCallUsage = {
+  model_id: string;
+  operation: string;
+  region: string;
+  status: "running" | "completed" | "failed";
+  input_tokens: number | null;
+  output_tokens: number | null;
+  latency_ms: number | null;
+  estimated_cost_usd: number | null;
+  price_reference: string | null;
+};
+
 export type ActivityStep = {
   id: number;
   kind:
@@ -42,7 +55,9 @@ export type ActivityStep = {
     | "model_call"
     | "verification"
     | "output_check"
-    | "privacy_check";
+    | "privacy_check"
+    | "understanding"
+    | "search_refinement";
   status: "running" | "completed" | "failed";
   started_ms: number;
   finished_ms: number | null;

@@ -13,6 +13,7 @@ export const REASON_LABELS: Record<string, string> = {
   safety_violation: "Request declined for safety",
   sensitive_data: "Private information removed",
   safety_check_unavailable: "Request checks unavailable",
+  clarification: "Clarification needed",
   capabilities: "About this assistant",
   personalized_advice: "Personalised advice declined",
   out_of_scope: "Outside supported topics",

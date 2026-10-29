@@ -80,8 +80,8 @@ def test_expired_budget_becomes_safe_generation_error_without_model_call() -> No
 def test_runtime_client_has_no_hidden_retries() -> None:
     client = build_bedrock_runtime_client(Settings(_env_file=None))
     assert client.meta.config.retries["total_max_attempts"] == 1
-    assert client.meta.config.connect_timeout == 1
-    assert client.meta.config.read_timeout == 20
+    assert client.meta.config.connect_timeout == 3
+    assert client.meta.config.read_timeout == 25
 
 
 def test_answer_budget_cannot_consume_the_entire_lambda_timeout() -> None:

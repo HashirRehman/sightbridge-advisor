@@ -7,8 +7,10 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, joinedload
 
+from app.domain.models.answers import Citation
+from app.domain.models.documents import RetrievedPassage
 from app.domain.models.identity import Principal
-from app.infrastructure.database.models import Conversation, Exchange, User
+from app.infrastructure.database.models import Conversation, Document, DocumentChunk, Exchange, User
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,6 +97,112 @@ class ChatRepository:
             .limit(limit)
         ).all()
         return [ConversationSummary(c, n) for c, n in rows]
+
+    def recent_context(self, conversation_id: uuid.UUID, user_id: str) -> list[dict[str, str]]:
+        """Bounded context, restricted to both the selected thread and its owner."""
+        rows = list(
+            self._session.scalars(
+                select(Exchange)
+                .where(Exchange.conversation_id == conversation_id, Exchange.user_id == user_id)
+                .order_by(Exchange.created_at.desc(), Exchange.id.desc())
+                .limit(4)
+            )
+        )
+        return [
+            {"question": row.question[:1000], "answer": row.answer_text[:1200]}
+            for row in reversed(rows)
+            if row.status != "failed" and row.reason != "sensitive_data"
+        ]
+
+    def reusable_evidence(
+        self, conversation_id: uuid.UUID, user_id: str, embedding_model: str
+    ) -> list[RetrievedPassage]:
+        """Re-fetch current public chunks cited by the latest owned, answered exchange.
+
+        Never accept client-supplied chunk IDs, skip over intervening refusals, or trust
+        generated prose as evidence. Re-ingestion invalidates the entire reuse candidate.
+        """
+        row = self._session.scalar(
+            select(Exchange)
+            .where(
+                Exchange.conversation_id == conversation_id,
+                Exchange.user_id == user_id,
+            )
+            .order_by(Exchange.created_at.desc(), Exchange.id.desc())
+            .limit(1)
+        )
+        if row is None or row.status != "answered" or not row.sources:
+            return []
+        result = []
+        for source in row.sources[:6]:
+            try:
+                chunk_id = uuid.UUID(source["chunk_id"])
+            except (ValueError, KeyError, TypeError):
+                return []
+            pair = self._session.execute(
+                select(DocumentChunk, Document)
+                .join(Document)
+                .where(
+                    DocumentChunk.id == chunk_id,
+                    DocumentChunk.embedding_model == embedding_model,
+                )
+            ).first()
+            if pair is None:
+                return []
+            chunk, document = pair
+            if (
+                document.updated_at > row.created_at
+                or document.id != source.get("document_id")
+                or not source.get("quotes")
+                or any(q not in chunk.content for q in source["quotes"])
+            ):
+                return []
+            result.append(
+                RetrievedPassage(
+                    chunk_id=chunk.id,
+                    document_id=document.id,
+                    title=document.title,
+                    publisher=document.publisher,
+                    source_url=document.source_url,
+                    page_number=chunk.page_number,
+                    section=chunk.section,
+                    content=chunk.content,
+                    similarity=1.0,
+                )
+            )
+        return result
+
+    def reusable_citations(
+        self, conversation_id: uuid.UUID, user_id: str, embedding_model: str
+    ) -> list[Citation]:
+        """Original citations only when their current chunks pass reuse checks."""
+        evidence = self.reusable_evidence(conversation_id, user_id, embedding_model)
+        if not evidence:
+            return []
+        row = self._session.scalar(
+            select(Exchange)
+            .where(Exchange.conversation_id == conversation_id, Exchange.user_id == user_id)
+            .order_by(Exchange.created_at.desc(), Exchange.id.desc())
+            .limit(1)
+        )
+        if row is None or len(row.sources[:6]) != len(evidence):
+            return []
+        return [
+            Citation(
+                number=index,
+                chunk_id=passage.chunk_id,
+                document_id=passage.document_id,
+                title=passage.title,
+                publisher=passage.publisher,
+                url=source.get("url", passage.source_url),
+                source_url=passage.source_url,
+                location=passage.location,
+                quotes=tuple(source["quotes"]),
+            )
+            for index, (source, passage) in enumerate(
+                zip(row.sources[:6], evidence, strict=True), start=1
+            )
+        ]
 
     def list_exchanges(self, conversation_id: uuid.UUID) -> list[Exchange]:
         return list(

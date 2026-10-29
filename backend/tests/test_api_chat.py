@@ -3,6 +3,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import DBAPIError
@@ -33,7 +34,9 @@ ADMIN = make_token(sub="admin-1", email="admin@example.com", groups=("admin",))
 class FakeAnswerService:
     """Canned pipeline output; these tests cover auth, ownership and auditing."""
 
-    def answer(self, question: str) -> AssistantAnswer:
+    def answer(
+        self, question: str, *, history: list[dict[str, str]] | None = None
+    ) -> AssistantAnswer:
         if "crash" in question:
             raise RuntimeError("unexpected bug")
         if question.startswith("Should I"):
@@ -288,7 +291,9 @@ def test_activity_updates_while_request_runs_and_limits_concurrent_requests(
     calls = [0]
 
     class BlockingAnswers:
-        def answer(self, question: str) -> AssistantAnswer:
+        def answer(
+            self, question: str, *, history: list[dict[str, str]] | None = None
+        ) -> AssistantAnswer:
             with activity_step("retrieval"):
                 with started:
                     calls[0] += 1
@@ -436,3 +441,139 @@ def test_result_ownership_is_checked_even_if_a_telemetry_link_is_wrong(client: T
         client.get(f"/api/chat/activity/{nonce}/result", headers=auth(ADVISOR_A)).status_code == 404
     )
     assert _ask(client, ADVISOR_A, "What is a DST?", activity_id=nonce).status_code == 404
+
+
+def test_follow_up_receives_only_its_owned_recent_context(client: TestClient) -> None:
+    calls: list[list[dict[str, str]]] = []
+
+    class RecordingAnswers(FakeAnswerService):
+        def answer(
+            self, question: str, *, history: list[dict[str, str]] | None = None
+        ) -> AssistantAnswer:
+            calls.append(history or [])
+            return super().answer(question, history=history)
+
+    assert isinstance(client.app, FastAPI)
+    client.app.dependency_overrides[get_answer_service] = RecordingAnswers
+    first = _ask(client, ADVISOR_A, "Explain the 1031 identification period").json()
+    _ask(client, ADVISOR_B, "Explain unrelated private conversation")
+    _ask(client, ADVISOR_A, "Explain a separate DST conversation")
+    _ask(client, ADVISOR_A, "And the deadline?", conversation_id=first["conversation_id"])
+    assert len(calls[-1]) == 1
+    assert calls[-1][0]["question"] == first["question"]
+    before = len(calls)
+    foreign = _ask(client, ADVISOR_B, "And the deadline?", conversation_id=first["conversation_id"])
+    assert foreign.status_code == 404 and len(calls) == before
+
+
+def test_reusable_evidence_requires_owner_current_chunk_and_latest_answer(
+    client: TestClient,
+) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from app.infrastructure.database.models import Document, DocumentChunk
+    from app.infrastructure.repositories.chat import ChatRepository
+
+    source_id = f"reuse-{uuid4().hex[:12]}"
+    with get_session_factory()() as session:
+        document = Document(
+            id=source_id,
+            title="Exchange guide",
+            publisher="IRS",
+            source_url="https://www.irs.gov/example",
+            document_type="html",
+            topics=["1031"],
+            content_hash="a" * 64,
+            ingest_signature="b" * 64,
+            storage_key=None,
+            fetched_at=datetime.now(UTC) - timedelta(days=1),
+        )
+        chunk = DocumentChunk(
+            document_id=source_id,
+            chunk_index=0,
+            content="Replacement property must be identified within 45 days of sale.",
+            page_number=None,
+            section="Deadline",
+            embedding=[1.0] + [0.0] * 1023,
+            embedding_model="titan-test",
+        )
+        session.add_all([document, chunk])
+        session.commit()
+        chunk_id = chunk.id
+    result = _ask(client, ADVISOR_A, "Explain the 1031 identification period").json()
+    conversation_id = UUID(result["conversation_id"])
+    with get_session_factory()() as session:
+        from app.infrastructure.database.models import Conversation
+
+        conversation = session.get(Conversation, conversation_id)
+        assert conversation is not None
+        repo = ChatRepository(session)
+        repo.add_exchange(
+            conversation,
+            user_id="advisor-a",
+            question="Explain the cited deadline",
+            answer_text="A sourced explanation.",
+            answer_payload={"disclaimer": "Educational only."},
+            sources=[
+                {
+                    "chunk_id": str(chunk_id),
+                    "document_id": source_id,
+                    "quotes": ["identified within 45 days"],
+                }
+            ],
+            status="answered",
+            reason=None,
+            model_id="test",
+            input_tokens=None,
+            output_tokens=None,
+            latency_ms=1,
+            retrieved_passages=1,
+            dropped_claims=0,
+            request_id=None,
+        )
+        session.commit()
+        assert len(repo.reusable_evidence(conversation_id, "advisor-a", "titan-test")) == 1
+        assert len(repo.reusable_citations(conversation_id, "advisor-a", "titan-test")) == 1
+        assert repo.reusable_evidence(conversation_id, "advisor-b", "titan-test") == []
+        assert repo.reusable_citations(conversation_id, "advisor-b", "titan-test") == []
+        assert repo.reusable_evidence(conversation_id, "advisor-a", "other-model") == []
+        refreshed_document = session.get(Document, source_id)
+        assert refreshed_document is not None
+        refreshed_document.updated_at = datetime.now(UTC) + timedelta(minutes=1)
+        session.commit()
+        assert repo.reusable_evidence(conversation_id, "advisor-a", "titan-test") == []
+    _ask(client, ADVISOR_A, "Should I buy a DST?", conversation_id=str(conversation_id))
+    with get_session_factory()() as session:
+        assert (
+            ChatRepository(session).reusable_evidence(conversation_id, "advisor-a", "titan-test")
+            == []
+        )
+
+
+def test_refusal_keeps_topic_context_but_private_input_is_excluded(client: TestClient) -> None:
+    seen: list[list[dict[str, str]]] = []
+
+    class RecordingAnswers(FakeAnswerService):
+        def answer(
+            self, question: str, *, history: list[dict[str, str]] | None = None
+        ) -> AssistantAnswer:
+            seen.append(history or [])
+            return super().answer(question, history=history)
+
+    assert isinstance(client.app, FastAPI)
+    client.app.dependency_overrides[get_answer_service] = RecordingAnswers
+    first = _ask(client, ADVISOR_A, "Should I buy a DST?").json()
+    _ask(
+        client,
+        ADVISOR_A,
+        "My SSN is 123-45-6789. Explain DSTs",
+        conversation_id=first["conversation_id"],
+    )
+    _ask(
+        client,
+        ADVISOR_A,
+        "Explain the general risks instead",
+        conversation_id=first["conversation_id"],
+    )
+    assert len(seen[-1]) == 1 and seen[-1][0]["question"] == "Should I buy a DST?"
+    assert "123-45-6789" not in str(seen)

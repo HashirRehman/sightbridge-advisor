@@ -24,12 +24,16 @@ def build_bedrock_runtime_client(settings: Settings) -> Any:
     if token:
         # Supported SDK token provider; applies only to Bedrock, not S3/SSM/Cognito.
         os.environ["AWS_BEARER_TOKEN_BEDROCK"] = token
-    return boto3.client(
+    client = boto3.client(
         "bedrock-runtime",
         region_name=settings.aws_region,
         config=Config(
-            connect_timeout=1,
+            connect_timeout=3,
             read_timeout=settings.bedrock_timeout_seconds,
             retries={"total_max_attempts": settings.bedrock_max_retries + 1, "mode": "standard"},
         ),
     )
+
+    from app.infrastructure.bedrock.metering import MeteredBedrockClient
+
+    return MeteredBedrockClient(client, settings.aws_region)

@@ -6,6 +6,7 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass, field
+from threading import Lock
 from typing import Any, Literal
 
 StepKind = Literal[
@@ -18,6 +19,8 @@ StepKind = Literal[
     "verification",
     "output_check",
     "privacy_check",
+    "understanding",
+    "search_refinement",
 ]
 StepStatus = Literal["running", "completed", "failed"]
 
@@ -38,6 +41,19 @@ class ActivityTracker:
     sink: Callable[[list[dict[str, Any]]], None]
     started: float = field(default_factory=time.monotonic)
     steps: list[ActivityStep] = field(default_factory=list)
+
+    model_calls: list[dict[str, Any]] = field(default_factory=list)
+    usage_lock: Lock = field(default_factory=Lock, repr=False)
+
+    def usage_snapshot(self) -> list[dict[str, Any]]:
+        from app.infrastructure.bedrock.pricing import PRICE_REFERENCE, estimated_cost_usd
+
+        with self.usage_lock:
+            calls = [dict(call) for call in self.model_calls]
+        for call in calls:
+            call["estimated_cost_usd"] = estimated_cost_usd(call)
+            call["price_reference"] = PRICE_REFERENCE
+        return calls
 
     def snapshot(self) -> list[dict[str, Any]]:
         return [asdict(step) for step in self.steps]
@@ -89,3 +105,44 @@ def activity_step(kind: StepKind, model_id: str | None = None) -> Iterator[Activ
         if tracker:
             step.finished_ms = tracker.elapsed()
             tracker.publish()
+
+
+def begin_model_call(
+    model_id: str, operation: str, region: str
+) -> tuple[ActivityTracker | None, int]:
+    tracker = _tracker.get()
+    if tracker is None:
+        return None, -1
+    with tracker.usage_lock:
+        index = len(tracker.model_calls)
+        tracker.model_calls.append(
+            {
+                "model_id": model_id,
+                "operation": operation,
+                "region": region,
+                "status": "running",
+                "input_tokens": None,
+                "output_tokens": None,
+                "latency_ms": None,
+            }
+        )
+    return tracker, index
+
+
+def finish_model_call(
+    handle: tuple[ActivityTracker | None, int],
+    *,
+    status: str,
+    elapsed_ms: int,
+    input_tokens: int | None = None,
+    output_tokens: int | None = None,
+) -> None:
+    tracker, index = handle
+    if tracker is not None:
+        with tracker.usage_lock:
+            tracker.model_calls[index].update(
+                status=status,
+                latency_ms=elapsed_ms,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+            )

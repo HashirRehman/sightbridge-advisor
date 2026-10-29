@@ -142,6 +142,7 @@ resource "aws_lambda_function" "api" {
       DATABASE_URL_SSM_PARAMETER     = aws_ssm_parameter.db_app_url.name
       EMBEDDING_PROVIDER             = "bedrock"
       LLM_PROVIDER                   = "bedrock"
+      RAG_EXECUTION_MODE             = var.rag_execution_mode
       BEDROCK_CHAT_MODEL_ID          = var.chat_model_id
       BEDROCK_FALLBACK_CHAT_MODEL_ID = var.fallback_chat_model_id
       BEDROCK_EMBEDDING_MODEL_ID     = var.embedding_model_id

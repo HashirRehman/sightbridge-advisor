@@ -22,6 +22,7 @@ class AnswerReason(StrEnum):
     SENSITIVE_DATA = "sensitive_data"
     SAFETY_CHECK_UNAVAILABLE = "safety_check_unavailable"
     CAPABILITIES = "capabilities"
+    CLARIFICATION = "clarification"
     PERSONALIZED_ADVICE = "personalized_advice"
     OUT_OF_SCOPE = "out_of_scope"
     PROMPT_INJECTION = "prompt_injection"

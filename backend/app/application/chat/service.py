@@ -27,6 +27,10 @@ from app.domain.models.answers import (
     VerifiedClaim,
 )
 from app.domain.models.identity import Principal
+from app.domain.policies.conversation_efficiency import (
+    evidence_only_rewrite,
+    evidence_reference_followup,
+)
 from app.domain.policies.question_policy import PolicyOutcome, evaluate_question
 from app.domain.policies.safety import local_safety_verdict, question_for_storage, sensitive_input
 from app.infrastructure.database.models import AnswerActivity, Conversation, Exchange
@@ -106,9 +110,7 @@ class ChatService:
         # Metadata replies and deterministic refusals need no queue or model call.
         decision = evaluate_question(question)
         if local_safety_verdict(question) is not SafetyVerdict.ALLOW or decision.outcome in (
-            PolicyOutcome.CAPABILITIES,
             PolicyOutcome.PROMPT_INJECTION,
-            PolicyOutcome.OUT_OF_SCOPE,
         ):
             return self.ask(principal, question, conversation_id, request_id, activity_id)
         _, activity = self.reserve(principal, question, conversation_id, activity_id)
@@ -229,7 +231,43 @@ class ChatService:
                             notice=NOTICE_PRIVACY,
                         )
                 else:
-                    answer = self._answers.answer(question)
+                    history = (
+                        self._repo.recent_context(conversation.id, principal.user_id)
+                        if conversation
+                        else []
+                    )
+                    evidence = (
+                        self._repo.reusable_evidence(
+                            conversation.id, principal.user_id, self._answers._embedder.model_id
+                        )
+                        if conversation
+                        and getattr(self._answers, "supports_evidence_reuse", False)
+                        and (
+                            evidence_only_rewrite(question) or evidence_reference_followup(question)
+                        )
+                        else []
+                    )
+                    source_citations = (
+                        self._repo.reusable_citations(
+                            conversation.id, principal.user_id, self._answers._embedder.model_id
+                        )
+                        if conversation and evidence and evidence_reference_followup(question)
+                        else []
+                    )
+                    answer = (
+                        self._answers.answer(
+                            question,
+                            history=history,
+                            evidence=evidence,
+                            source_citations=source_citations,
+                        )
+                        if evidence
+                        else (
+                            self._answers.answer(question, history=history)
+                            if history
+                            else self._answers.answer(question)
+                        )
+                    )
         except Exception as exc:
             # AnswerService handles expected failures; this is a bug guard so that even an
             # unexpected crash is still recorded as a failed exchange.
@@ -258,6 +296,7 @@ class ChatService:
                 "key_considerations": [_claim_json(c) for c in answer.key_considerations],
                 "disclaimer": answer.disclaimer,
                 "activity": tracker.snapshot(),
+                "model_usage": tracker.usage_snapshot(),
             },
             sources=[_citation_json(c) for c in answer.citations],
             status=answer.status.value,

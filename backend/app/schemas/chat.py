@@ -50,6 +50,8 @@ class ActivityStepOut(BaseModel):
         "verification",
         "output_check",
         "privacy_check",
+        "understanding",
+        "search_refinement",
     ]
     status: Literal["running", "completed", "failed"]
     started_ms: int
@@ -76,6 +78,18 @@ class CitationOut(BaseModel):
     quotes: list[str]
 
 
+class ModelCallOut(BaseModel):
+    model_id: str
+    operation: str
+    region: str
+    status: Literal["running", "completed", "failed"]
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    latency_ms: int | None = None
+    estimated_cost_usd: float | None = None
+    price_reference: str | None = None
+
+
 class ExchangeOut(BaseModel):
     id: uuid.UUID
     conversation_id: uuid.UUID
@@ -89,6 +103,7 @@ class ExchangeOut(BaseModel):
     disclaimer: str
     created_at: datetime
     activity: list[ActivityStepOut] = Field(default_factory=list)
+    model_usage: list[ModelCallOut] = Field(default_factory=list)
 
     @classmethod
     def from_model(cls, e: Exchange) -> "ExchangeOut":
@@ -106,6 +121,7 @@ class ExchangeOut(BaseModel):
             disclaimer=payload["disclaimer"],
             created_at=e.created_at,
             activity=payload.get("activity", []),
+            model_usage=payload.get("model_usage", []),
         )
 
 

@@ -484,6 +484,7 @@ function ExchangeDetail({
                 </section>
               )}
               <ActivityView steps={exchange.activity ?? []} />
+              <ModelUsageDetails calls={exchange.model_usage ?? []} />
               <section className="space-y-2">
                 <h3 className="text-sm font-semibold">Diagnostics</h3>
                 <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
@@ -520,5 +521,55 @@ function ExchangeDetail({
         )}
       </SheetContent>
     </Sheet>
+  );
+}
+
+function ModelUsageDetails({
+  calls,
+}: {
+  calls: NonNullable<AdminExchange["model_usage"]>;
+}) {
+  if (calls.length === 0) return null;
+  const incomplete = calls.some(
+    (call) =>
+      call.input_tokens === null ||
+      call.output_tokens === null ||
+      call.estimated_cost_usd === null,
+  );
+  const input = calls.reduce((total, call) => total + (call.input_tokens ?? 0), 0);
+  const output = calls.reduce((total, call) => total + (call.output_tokens ?? 0), 0);
+  const estimatedCost = calls.reduce(
+    (total, call) => total + (call.estimated_cost_usd ?? 0),
+    0,
+  );
+  return (
+    <section className="space-y-2">
+      <h3 className="text-sm font-semibold">Model usage</h3>
+      <p className="text-muted-foreground text-xs">
+        {calls.length} Bedrock calls · {input} input / {output} output tokens
+        {incomplete ? " (partial)" : ""} · about ${estimatedCost.toFixed(6)}
+        {incomplete ? " for measured calls" : ""}
+      </p>
+      <details className="rounded-lg border p-3 text-xs">
+        <summary className="cursor-pointer font-medium">View model calls</summary>
+        <ol className="mt-3 space-y-2">
+          {calls.map((call, index) => (
+            <li key={index} className="border-t pt-2 first:border-0 first:pt-0">
+              <span className="font-medium">{call.model_id}</span> · {call.operation} · {call.status}
+              <br />
+              {call.input_tokens ?? "?"} in / {call.output_tokens ?? "?"} out ·{" "}
+              {call.latency_ms === null ? "?" : `${call.latency_ms} ms`} ·{" "}
+              {call.estimated_cost_usd === null
+                ? "cost unknown"
+                : `about $${call.estimated_cost_usd.toFixed(6)}`}
+            </li>
+          ))}
+        </ol>
+        <p className="text-muted-foreground mt-3">
+          Usage estimates exclude credits and other AWS charges. Calls still running
+          after a timeout may be billed later.
+        </p>
+      </details>
+    </section>
   );
 }

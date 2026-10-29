@@ -53,6 +53,16 @@ variable "chat_model_id" {
   default = "deepseek.v3.2"
 }
 
+variable "rag_execution_mode" {
+  description = "Answer pipeline mode; baseline is available for rollback and comparison."
+  type        = string
+  default     = "optimized"
+  validation {
+    condition     = contains(["baseline", "optimized"], var.rag_execution_mode)
+    error_message = "rag_execution_mode must be baseline or optimized."
+  }
+}
+
 variable "fallback_chat_model_id" {
   type    = string
   default = "apac.amazon.nova-lite-v1:0"

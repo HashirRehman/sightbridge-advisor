@@ -3,13 +3,15 @@ import { Check, ChevronDown, LoaderCircle, X } from "lucide-react";
 import type { ActivityStep } from "@/lib/api";
 
 const LABELS: Record<ActivityStep["kind"], string> = {
+  understanding: "Understanding your question in context",
+  search_refinement: "Trying another document search",
   policy: "Checking the request",
   safety: "Reviewing the request for safety",
   embedding: "Preparing document search",
   retrieval: "Searching approved sources",
   generation: "Preparing the explanation",
   model_call: "Requesting an answer from the model",
-  verification: "Checking supporting quotes",
+  verification: "Checking supporting evidence",
   output_check: "Reviewing the response for safety",
   privacy_check: "Checking for private details",
 };
