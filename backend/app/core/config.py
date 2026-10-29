@@ -30,7 +30,6 @@ class Settings(BaseSettings):
     aws_bearer_token_bedrock: SecretStr = SecretStr("")
     bedrock_api_key_ssm_parameter: str = ""
     # "local" = extractive stand-in for dev without AWS; refused in production.
-    rag_execution_mode: Literal["baseline", "optimized"] = "optimized"
     llm_provider: Literal["bedrock", "local"] = "bedrock"
     # Primary: DeepSeek V3.2. Fallback (on errors only): Nova Lite. Empty disables it.
     bedrock_chat_model_id: str = "deepseek.v3.2"
@@ -45,8 +44,8 @@ class Settings(BaseSettings):
     generation_timeout_seconds: float = Field(default=14.0, gt=0)
     answer_timeout_seconds: float = Field(default=20.0, gt=0, le=20)
     max_output_tokens: int = 900
-    safety_model_id: str = "apac.amazon.nova-lite-v1:0"
-    safety_timeout_seconds: float = Field(default=4.0, gt=0, le=6)
+    # Independent claim/safety review; a malformed review escalates once to the chat model.
+    review_model_id: str = "apac.amazon.nova-lite-v1:0"
     max_concurrent_answers: int = Field(default=4, ge=1, le=20)
     worker_answer_timeout_seconds: float = Field(default=40.0, gt=0, le=45)
     worker_generation_timeout_seconds: float = Field(default=25.0, gt=0, le=30)

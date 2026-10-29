@@ -6,8 +6,8 @@ locals {
   is_profile          = local.chat_base_model != var.chat_model_id
   fallback_base_model = replace(var.fallback_chat_model_id, "/^(us|eu|apac|global)\\./", "")
   fallback_is_profile = local.fallback_base_model != var.fallback_chat_model_id
-  safety_base_model   = replace(var.safety_model_id, "/^(us|eu|apac|global)\\./", "")
-  safety_is_profile   = local.safety_base_model != var.safety_model_id
+  review_base_model   = replace(var.review_model_id, "/^(us|eu|apac|global)\\./", "")
+  review_is_profile   = local.review_base_model != var.review_model_id
 }
 
 # --- Logs (short retention keeps CloudWatch inside the free allowance) ---
@@ -85,8 +85,8 @@ data "aws_iam_policy_document" "api" {
         "arn:${local.partition}:bedrock:${split("-", var.region)[0]}-*::foundation-model/${local.fallback_base_model}",
       ],
       local.fallback_is_profile ? ["arn:${local.partition}:bedrock:${var.region}:${local.account_id}:inference-profile/${var.fallback_chat_model_id}"] : [],
-      ["arn:${local.partition}:bedrock:${split("-", var.region)[0]}-*::foundation-model/${local.safety_base_model}"],
-      local.safety_is_profile ? ["arn:${local.partition}:bedrock:${var.region}:${local.account_id}:inference-profile/${var.safety_model_id}"] : [],
+      ["arn:${local.partition}:bedrock:${split("-", var.region)[0]}-*::foundation-model/${local.review_base_model}"],
+      local.review_is_profile ? ["arn:${local.partition}:bedrock:${var.region}:${local.account_id}:inference-profile/${var.review_model_id}"] : [],
     )
   }
 }
@@ -142,13 +142,12 @@ resource "aws_lambda_function" "api" {
       DATABASE_URL_SSM_PARAMETER     = aws_ssm_parameter.db_app_url.name
       EMBEDDING_PROVIDER             = "bedrock"
       LLM_PROVIDER                   = "bedrock"
-      RAG_EXECUTION_MODE             = var.rag_execution_mode
       BEDROCK_CHAT_MODEL_ID          = var.chat_model_id
       BEDROCK_FALLBACK_CHAT_MODEL_ID = var.fallback_chat_model_id
       BEDROCK_EMBEDDING_MODEL_ID     = var.embedding_model_id
       BEDROCK_API_KEY_SSM_PARAMETER  = var.bedrock_api_key_ssm_parameter
       GENERATION_TIMEOUT_SECONDS     = tostring(var.generation_timeout_seconds)
-      SAFETY_MODEL_ID                = var.safety_model_id
+      REVIEW_MODEL_ID                = var.review_model_id
       RETRIEVAL_MIN_SIMILARITY       = tostring(var.retrieval_min_similarity)
       AUTH_PROVIDER                  = "cognito"
       COGNITO_REGION                 = var.region

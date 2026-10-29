@@ -16,6 +16,11 @@ _REWRITE = re.compile(
     r"in plain (?:English|language)|in (?:one|two|three|1|2|3) (?:short )?sentences))?)[?.!]*",
     re.IGNORECASE,
 )
+_ACKNOWLEDGEMENT = re.compile(
+    r"(?:ok(?:ay)?[, ]*)?(?:thanks?(?: you)?|thank you|thx|ty|got it|great|cool|perfect|"
+    r"awesome|that helps|makes sense)(?: (?:so much|a lot|very much))?[.! ]*",
+    re.IGNORECASE,
+)
 _HELP_FACT = re.compile(
     r"\b(?:defer(?:s|red|ring|ral)?|tax(?:es)? (?:right away|immediately)|"
     r"swap(?:ping)? (?:one |an? )?(?:investment )?property|"
@@ -28,6 +33,11 @@ _HELP_FACT = re.compile(
 
 def direct_factual_request(question: str) -> bool:
     return _DIRECT.fullmatch(question.strip()) is not None
+
+
+def acknowledgement(question: str) -> bool:
+    """A thank-you or "got it" with no new request; it needs no model or search."""
+    return _ACKNOWLEDGEMENT.fullmatch(question.strip()) is not None
 
 
 def evidence_only_rewrite(question: str) -> bool:

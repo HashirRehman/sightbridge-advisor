@@ -8,9 +8,9 @@ from app.domain.models.answers import Citation, LabeledPassage, VerifiedClaim
 @dataclass(frozen=True)
 class ResponseReview:
     safety: SafetyVerdict
-    grounding_issue: str | None = None
-    needs_evidence: bool = False
+    # Indexes into explanation + key_considerations, in that order.
     failed_claim_indexes: tuple[int, ...] = ()
+    issue: str | None = None
 
 
 class ResponseReviewer(Protocol):
@@ -21,5 +21,4 @@ class ResponseReviewer(Protocol):
         citations: list[Citation],
         *,
         passages: list[LabeledPassage],
-        reply: str = "",
     ) -> ResponseReview: ...

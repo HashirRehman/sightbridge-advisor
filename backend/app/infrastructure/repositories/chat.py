@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.domain.models.answers import Citation
 from app.domain.models.documents import RetrievedPassage
 from app.domain.models.identity import Principal
+from app.domain.policies.citation_verifier import quote_matches
 from app.infrastructure.database.models import Conversation, Document, DocumentChunk, Exchange, User
 
 
@@ -154,7 +155,7 @@ class ChatRepository:
                 document.updated_at > row.created_at
                 or document.id != source.get("document_id")
                 or not source.get("quotes")
-                or any(q not in chunk.content for q in source["quotes"])
+                or not all(quote_matches(q, chunk.content) for q in source["quotes"])
             ):
                 return []
             result.append(

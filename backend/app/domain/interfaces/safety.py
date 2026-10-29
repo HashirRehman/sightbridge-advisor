@@ -1,5 +1,4 @@
 from enum import StrEnum
-from typing import Protocol
 
 
 class SafetyVerdict(StrEnum):
@@ -17,8 +16,3 @@ class SafetyVerdict(StrEnum):
 
 class SafetyCheckError(Exception):
     pass
-
-
-class SafetyGate(Protocol):
-    def check(self, text: str) -> SafetyVerdict: ...
-    def check_output(self, text: str) -> SafetyVerdict: ...

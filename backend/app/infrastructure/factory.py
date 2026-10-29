@@ -8,19 +8,12 @@ from app.application.rag.service import AnswerService
 from app.core.config import Settings
 from app.domain.interfaces.embedding import Embedder
 from app.domain.interfaces.generation import AnswerGenerator
-from app.domain.interfaces.safety import SafetyGate
 from app.domain.interfaces.storage import ObjectStore
 from app.infrastructure.bedrock.client import build_bedrock_runtime_client
-from app.infrastructure.bedrock.conversation import (
-    BedrockConversationResponder,
-    BedrockConversationRouter,
-)
-from app.infrastructure.bedrock.efficient_conversation import EfficientConversationRouter
 from app.infrastructure.bedrock.embeddings import BedrockTitanEmbedder
 from app.infrastructure.bedrock.generator import BedrockAnswerGenerator
-from app.infrastructure.bedrock.grounding import BedrockGroundingGate
+from app.infrastructure.bedrock.planner import BedrockConversationPlanner
 from app.infrastructure.bedrock.response_review import BedrockResponseReviewer
-from app.infrastructure.bedrock.safety import BedrockSafetyGate, LocalSafetyGate
 from app.infrastructure.repositories.knowledge_base import KnowledgeBaseRepository
 from app.infrastructure.retrieval.local_embedder import LocalHashingEmbedder
 from app.infrastructure.retrieval.local_generator import LocalExtractiveGenerator
@@ -79,19 +72,26 @@ def build_answer_service(
     settings: Settings,
     embedder: Embedder,
     generator: AnswerGenerator,
-    safety_gate: SafetyGate | None = None,
     *,
     timeout_seconds: float | None = None,
 ) -> AnswerService:
-    inventory = (
-        [
+    planner = reviewer = None
+    if settings.llm_provider == "bedrock":
+        client = build_bedrock_runtime_client(settings)
+        inventory = [
             {"title": d.title[:200], "publisher": d.publisher[:150]}
             for d in KnowledgeBaseRepository(session).documents()[:30]
         ]
-        if settings.llm_provider == "bedrock"
-        else []
-    )
-    optimized = settings.llm_provider == "bedrock" and settings.rag_execution_mode == "optimized"
+        chat_models = [settings.bedrock_chat_model_id, settings.bedrock_fallback_chat_model_id]
+        planner = BedrockConversationPlanner(
+            client, [m for m in chat_models if m], settings.aws_region, inventory
+        )
+        reviewer = BedrockResponseReviewer(
+            client,
+            settings.review_model_id,
+            settings.aws_region,
+            escalation_model_id=settings.bedrock_chat_model_id,
+        )
     return AnswerService(
         embedder,
         PgVectorPassageRetriever(session, embedder.model_id),
@@ -99,54 +99,6 @@ def build_answer_service(
         top_k=settings.retrieval_top_k,
         min_similarity=settings.retrieval_min_similarity,
         timeout_seconds=timeout_seconds or settings.answer_timeout_seconds,
-        safety_gate=None if optimized else (safety_gate or build_safety_gate(settings)),
-        grounding_gate=BedrockGroundingGate(
-            build_bedrock_runtime_client(settings),
-            settings.safety_model_id,
-            settings.aws_region,
-        )
-        if settings.llm_provider == "bedrock" and not optimized
-        else None,
-        response_reviewer=BedrockResponseReviewer(
-            build_bedrock_runtime_client(settings),
-            settings.safety_model_id,
-            settings.aws_region,
-            inventory,
-        )
-        if optimized
-        else None,
-        router=(EfficientConversationRouter if optimized else BedrockConversationRouter)(
-            build_bedrock_runtime_client(settings),
-            settings.bedrock_chat_model_id,
-            settings.aws_region,
-            inventory,
-        )
-        if settings.llm_provider == "bedrock"
-        else None,
-        responder=BedrockConversationResponder(
-            build_bedrock_runtime_client(settings),
-            settings.bedrock_chat_model_id,
-            settings.aws_region,
-            inventory,
-            review_model_id=None if optimized else settings.bedrock_chat_model_id,
-        )
-        if settings.llm_provider == "bedrock"
-        else None,
-    )
-
-
-def build_safety_gate(settings: Settings) -> SafetyGate:
-    if settings.llm_provider == "local":
-        return LocalSafetyGate()
-    return BedrockSafetyGate(
-        build_bedrock_runtime_client(settings),
-        settings.safety_model_id,
-        settings.aws_region,
-        settings.safety_timeout_seconds,
-        advice_reviewer=BedrockSafetyGate(
-            build_bedrock_runtime_client(settings),
-            settings.bedrock_chat_model_id,
-            settings.aws_region,
-            settings.safety_timeout_seconds,
-        ),
+        planner=planner,
+        reviewer=reviewer,
     )

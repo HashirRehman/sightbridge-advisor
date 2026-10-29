@@ -491,7 +491,8 @@ def test_reusable_evidence_requires_owner_current_chunk_and_latest_answer(
         chunk = DocumentChunk(
             document_id=source_id,
             chunk_index=0,
-            content="Replacement property must be identified within 45 days of sale.",
+            # A PDF line break inside the quoted span must not disable reuse.
+            content="Replacement property must be identified\nwithin 45 days of sale.",
             page_number=None,
             section="Deadline",
             embedding=[1.0] + [0.0] * 1023,

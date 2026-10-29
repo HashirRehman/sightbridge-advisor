@@ -238,7 +238,7 @@ class ChatService:
                     )
                     evidence = (
                         self._repo.reusable_evidence(
-                            conversation.id, principal.user_id, self._answers._embedder.model_id
+                            conversation.id, principal.user_id, self._answers.embedding_model_id
                         )
                         if conversation
                         and getattr(self._answers, "supports_evidence_reuse", False)
@@ -249,7 +249,7 @@ class ChatService:
                     )
                     source_citations = (
                         self._repo.reusable_citations(
-                            conversation.id, principal.user_id, self._answers._embedder.model_id
+                            conversation.id, principal.user_id, self._answers.embedding_model_id
                         )
                         if conversation and evidence and evidence_reference_followup(question)
                         else []

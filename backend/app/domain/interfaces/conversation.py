@@ -1,53 +1,34 @@
+from dataclasses import dataclass, field
 from typing import Literal, Protocol
 
-from pydantic import BaseModel, Field
-
-from app.domain.interfaces.generation import GenerationError
 from app.domain.interfaces.safety import SafetyVerdict
 
+PlanAction = Literal["search", "rewrite", "cite", "help", "clarify"]
 
-class ConversationPlan(BaseModel):
-    safety_verdict: SafetyVerdict | None = None
+
+@dataclass
+class ConversationPlan:
+    """How to answer one message.
+
+    search: retrieve passages for `search_queries`, then generate a cited answer.
+    rewrite: restate the previous answer in simpler or shorter words from its own evidence.
+    cite: name the sources behind the previous answer from its own evidence.
+    help/clarify: `reply` is final text about the app itself; it never carries tax facts.
+    """
+
+    action: PlanAction
+    safety_verdict: SafetyVerdict = SafetyVerdict.ALLOW
+    search_queries: list[str] = field(default_factory=list)
+    alternative_query: str = ""
+    reply: str = ""
     model_id: str | None = None
-    action: Literal["search", "help", "clarify"] = Field(
-        description="search for factual questions; help for app/source information; clarify when "
-        "the topic is ambiguous. A vague exchange question needs clarification if no single "
-        "exchange type is established in history."
-    )
-    query: str = Field(
-        default="",
-        max_length=1000,
-        description="Standalone search question explicitly naming "
-        "the intended topic and any established exchange type. Resolve follow-ups from history. "
-        "Never silently change section numbers. Empty for help or clarify.",
-    )
-    alternative_query: str = Field(
-        default="",
-        max_length=1000,
-        description="Alternative search wording for "
-        "the same factual intent, explicitly naming its topic. Empty for help or clarify.",
-    )
-    search_queries: list[str] = Field(default_factory=list, max_length=3)
-    reply: str = Field(
-        default="",
-        max_length=1600,
-        description="For help: a tailored reply about app capabilities "
-        "or actual inventory, without teaching tax facts or defining exchanges. For clarify: one "
-        "short question to resolve ambiguity. For search: empty.",
-    )
+
+    @property
+    def query(self) -> str:
+        return "; ".join(self.search_queries)[:1000]
 
 
-class ConversationRouter(Protocol):
+class ConversationPlanner(Protocol):
+    """One semantic decision per message: safety verdict, action and resolved searches."""
+
     def plan(self, question: str, history: list[dict[str, str]]) -> ConversationPlan: ...
-
-
-class ConversationResponder(Protocol):
-    model_id: str
-
-    def respond(self, question: str, history: list[dict[str, str]]) -> str: ...
-
-
-class ConversationNeedsEvidence(GenerationError):
-    def __init__(self, queries: list[str]) -> None:
-        super().__init__("conversation reply requires source evidence")
-        self.queries = queries

@@ -50,9 +50,11 @@ def deep_link(passage: LabeledPassage, quote: str) -> str:
     return passage.source_url
 
 
-def _quote_in_passage(quote: str, passage: LabeledPassage) -> bool:
+def quote_matches(quote: str, text: str) -> bool:
+    """The single definition of "this quote appears in this text", tolerant of whitespace,
+    quote-mark and dash variants (PDF line breaks) but otherwise exact."""
     q = normalize(quote).strip(" .")
-    return len(q.split()) >= MIN_QUOTE_WORDS and q in normalize(passage.content)
+    return len(q.split()) >= MIN_QUOTE_WORDS and q in normalize(text)
 
 
 def _claim_overlaps(claim: str, passages: list[LabeledPassage]) -> bool:
@@ -113,7 +115,7 @@ def verify_answer(draft: AnswerDraft, passages: list[LabeledPassage]) -> Verific
             valid: list[tuple[LabeledPassage, str]] = []
             for c in claim.citations:
                 passage = by_label.get(c.passage_id.strip().upper())
-                if passage is not None and _quote_in_passage(c.quote, passage):
+                if passage is not None and quote_matches(c.quote, passage.content):
                     valid.append((passage, c.quote.strip()))
                 else:
                     rejected += 1
