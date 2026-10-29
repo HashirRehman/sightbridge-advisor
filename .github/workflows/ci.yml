@@ -1,15 +1,22 @@
-name: CI
+name: CI and deployment
 
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: pipeline-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   backend:
+    name: Backend checks
+    timeout-minutes: 10
     runs-on: ubuntu-latest
     env:
       TEST_DATABASE_URL: postgresql+psycopg://sightbridge:sightbridge@localhost:5433/sightbridge_test
@@ -36,8 +43,12 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run mypy app tests scripts
       - run: uv run pytest -q
+      - name: Test deployment status handling
+        run: python3 -m unittest discover -s ../.github/scripts -p 'test_*.py'
 
   frontend:
+    name: Frontend checks
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -57,6 +68,8 @@ jobs:
       - run: npm run test:e2e
 
   terraform:
+    name: Terraform checks
+    timeout-minutes: 5
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -69,3 +82,217 @@ jobs:
       - run: terraform fmt -check -recursive
       - run: terraform init -backend=false -input=false
       - run: terraform validate
+
+  quality:
+    name: Quality gate
+    needs: [backend, frontend, terraform]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require every check to pass
+        env:
+          CHECKS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          checks = json.loads(os.environ["CHECKS"])
+          for name, job in checks.items():
+              print(f"{name}: {job['result']}")
+          if any(job["result"] != "success" for job in checks.values()):
+              raise SystemExit("Release blocked: all checks must pass.")
+          PY
+
+  package:
+    name: Package tested release
+    needs: quality
+    outputs:
+      source_id: ${{ steps.archive.outputs.source_id }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Build Lambda archive and checksum
+        id: archive
+        run: |
+          bash backend/scripts/build_lambda.sh
+          echo "source_id=$(python3 backend/scripts/source_id.py)" >> "$GITHUB_OUTPUT"
+          cd backend/dist
+          sha256sum lambda.zip > lambda.zip.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backend-${{ github.sha }}
+          path: |
+            backend/dist/lambda.zip
+            backend/dist/lambda.zip.sha256
+          retention-days: 1
+          if-no-files-found: error
+
+  release:
+    name: Release eligibility
+    needs: package
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      current: ${{ steps.release.outputs.current }}
+      backend: ${{ steps.release.outputs.backend }}
+      frontend: ${{ steps.release.outputs.frontend }}
+    steps:
+      - name: Check revision and deployment configuration
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ github.sha }}
+          BACKEND_ROLE: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          FRONTEND_ENABLED: ${{ vars.ENABLE_FRONTEND_DEPLOY }}
+        run: |
+          set -euo pipefail
+          current=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)
+          if [ "$current" != "$RELEASE_SHA" ]; then
+            echo "Superseded revision: deployment skipped." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "current=true" >> "$GITHUB_OUTPUT"
+          if [ -n "$BACKEND_ROLE" ]; then
+            echo "backend=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "AWS OIDC is unavailable. The backend stage will verify the live source ID or wait for Terraform/operator deployment; it will not claim an AWS deployment." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ "$FRONTEND_ENABLED" = "true" ]; then
+            echo "frontend=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy_backend:
+    name: Deploy or verify backend
+    needs: [package, release]
+    if: needs.release.outputs.current == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      API_BASE_URL: ${{ vars.API_BASE_URL }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      LAMBDA_FUNCTION_NAME: ${{ vars.LAMBDA_FUNCTION_NAME }}
+      ARTIFACTS_BUCKET: ${{ vars.ARTIFACTS_BUCKET }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: backend-${{ github.sha }}
+          path: release
+      - name: Verify packaged archive
+        working-directory: release
+        run: sha256sum --check lambda.zip.sha256
+      - uses: aws-actions/configure-aws-credentials@v4
+        if: needs.release.outputs.backend == 'true'
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: sightbridge-${{ github.run_id }}
+      - name: Deploy the tested artifact
+        if: needs.release.outputs.backend == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          current=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)
+          test "$current" = "$RELEASE_SHA"
+          test -n "$ARTIFACTS_BUCKET" && test -n "$LAMBDA_FUNCTION_NAME"
+          key="releases/$RELEASE_SHA.zip"
+          aws s3api put-object --bucket "$ARTIFACTS_BUCKET" --key "$key" --body release/lambda.zip --server-side-encryption AES256 > /dev/null
+          aws lambda update-function-code --function-name "$LAMBDA_FUNCTION_NAME" --s3-bucket "$ARTIFACTS_BUCKET" --s3-key "$key" > /dev/null
+          aws lambda wait function-updated-v2 --function-name "$LAMBDA_FUNCTION_NAME"
+          expected=$(openssl dgst -sha256 -binary release/lambda.zip | openssl base64 -A)
+          actual=$(aws lambda get-function-configuration --function-name "$LAMBDA_FUNCTION_NAME" --query CodeSha256 --output text)
+          test "$actual" = "$expected"
+          echo "Lambda update completed and the deployed archive hash matches."
+      - name: Wait for the expected backend source to be live
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ github.sha }}
+          EXPECTED_SOURCE_ID: ${{ needs.package.outputs.source_id }}
+          DEPLOYMENT_MODE: ${{ needs.release.outputs.backend == 'true' && 'automatic' || 'verify-or-await-terraform' }}
+        run: python3 .github/scripts/verify_backend.py
+
+  deploy_frontend:
+    name: Deploy frontend
+    needs: [release, deploy_backend]
+    if: >-
+      always() && !cancelled() && needs.release.result == 'success' &&
+      needs.release.outputs.current == 'true' && needs.release.outputs.frontend == 'true' &&
+      needs.deploy_backend.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Trigger Amplify and verify the released revision
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ github.sha }}
+          AMPLIFY_WEBHOOK_URL: ${{ secrets.AMPLIFY_WEBHOOK_URL }}
+          FRONTEND_BASE_URL: ${{ vars.FRONTEND_BASE_URL }}
+        run: python3 .github/scripts/deploy_frontend.py
+
+  smoke:
+    name: Production smoke tests
+    needs: [release, deploy_backend, deploy_frontend]
+    if: >-
+      always() && !cancelled() && needs.release.outputs.current == 'true' &&
+      needs.deploy_frontend.result == 'success' &&
+      needs.deploy_backend.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Check frontend, API and authentication boundary
+        env:
+          API_BASE_URL: ${{ vars.API_BASE_URL }}
+          FRONTEND_BASE_URL: ${{ vars.FRONTEND_BASE_URL }}
+        run: |
+          set -euo pipefail
+          test -n "$API_BASE_URL" && test -n "$FRONTEND_BASE_URL"
+          curl --fail --silent --show-error --retry 3 "${FRONTEND_BASE_URL%/}/login" -o /dev/null
+          curl --fail --silent --show-error --retry 3 "${API_BASE_URL%/}/api/health"
+          status=$(curl --silent --show-error -o /dev/null -w '%{http_code}' -X POST "${API_BASE_URL%/}/api/chat" -H 'Content-Type: application/json' -d '{"question":"What can you do?"}')
+          test "$status" = "401"
+
+  summary:
+    name: Pipeline summary
+    needs: [backend, frontend, terraform, quality, package, release, deploy_backend, deploy_frontend, smoke]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Report actual stage outcomes
+        env:
+          STAGES: ${{ toJSON(needs) }}
+          BACKEND_ROLE: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
+              out.write("| Stage | Result |\n|---|---|\n")
+              for name, job in json.loads(os.environ["STAGES"]).items():
+                  out.write(f"| {name} | {job['result']} |\n")
+              if not os.environ["BACKEND_ROLE"]:
+                  out.write("\nBackend automation is unavailable: the backend job verifies the live source or waits for a Terraform deployment. It does not report performing an AWS deployment.\n")
+              jobs = json.loads(os.environ["STAGES"])
+              if jobs["smoke"]["result"] == "success":
+                  out.write("\n**Release verified:** both live source revisions match and production smoke checks passed.\n")
+              elif jobs["release"].get("outputs", {}).get("current") == "true":
+                  out.write("\n**Release not verified:** inspect failed, cancelled or timed-out deployment stages.\n")
+              else:
+                  out.write("\nValidation run only, or revision superseded; no production release claimed.\n")
+          PY

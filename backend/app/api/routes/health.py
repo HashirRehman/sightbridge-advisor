@@ -7,6 +7,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
+from app.core.release import release_source_id
 from app.infrastructure.database.session import get_db_session
 
 router = APIRouter(tags=["health"])
@@ -37,3 +38,12 @@ def health(
         version=settings.app_version,
         database=database,
     )
+
+
+@router.get("/api/release")
+def release(response: Response) -> dict[str, str | None]:
+    source_id = release_source_id()
+    response.headers["Cache-Control"] = "no-store"
+    if source_id is None:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    return {"source_id": source_id}

@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  env: { BUILD_COMMIT_ID: process.env.BUILD_COMMIT_ID ?? "" },
   async headers() {
     return [
       {

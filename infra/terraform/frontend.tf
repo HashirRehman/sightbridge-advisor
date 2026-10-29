@@ -24,6 +24,7 @@ resource "aws_amplify_app" "web" {
             build:
               commands:
                 - env | grep -E '^(APP_ENV|API_BASE_URL|AUTH_PROVIDER|COGNITO_REGION|COGNITO_APP_CLIENT_ID)=' > .env.production
+                - printf 'BUILD_COMMIT_ID=%s\n' "$(git rev-parse HEAD)" >> .env.production
                 - npm run build
           artifacts:
             baseDirectory: .next
@@ -51,5 +52,13 @@ resource "aws_amplify_branch" "main" {
   branch_name       = var.frontend_branch
   framework         = "Next.js - SSR"
   stage             = "PRODUCTION"
-  enable_auto_build = true
+  enable_auto_build = false # The GitHub quality gate triggers the incoming webhook.
+}
+
+
+resource "aws_amplify_webhook" "release" {
+  count       = var.enable_amplify ? 1 : 0
+  app_id      = aws_amplify_app.web[0].id
+  branch_name = aws_amplify_branch.main[0].branch_name
+  description = "GitHub gated release pipeline"
 }

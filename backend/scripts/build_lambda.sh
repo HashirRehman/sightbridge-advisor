@@ -24,6 +24,7 @@ done
 find dist/build -type d \( -name tests -o -name __pycache__ \) -prune -exec rm -rf {} +
 
 cp -R app dist/build/app
+python3 scripts/source_id.py --json > dist/build/app/release.json
 # Ingestion/eval tooling and tests are operator-side only and are not shipped.
 rm -f dist/lambda.zip
 (cd dist/build && zip -qr9 ../lambda.zip .)
