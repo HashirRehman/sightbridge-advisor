@@ -41,9 +41,14 @@ data "aws_iam_policy_document" "api" {
   }
 
   statement {
-    sid       = "ReadDatabaseUrl"
-    actions   = ["ssm:GetParameter"]
-    resources = [aws_ssm_parameter.db_app_url.arn]
+    sid     = "ReadDatabaseUrl"
+    actions = ["ssm:GetParameter"]
+    resources = concat(
+      [aws_ssm_parameter.db_app_url.arn],
+      var.bedrock_api_key_ssm_parameter == "" ? [] : [
+        "arn:${local.partition}:ssm:${var.region}:${local.account_id}:parameter${var.bedrock_api_key_ssm_parameter}",
+      ],
+    )
   }
 
   statement {
@@ -64,8 +69,7 @@ data "aws_iam_policy_document" "api" {
     resources = concat(
       [
         "arn:${local.partition}:bedrock:${var.region}::foundation-model/${var.embedding_model_id}",
-        # Cross-Region profiles route to any US Region, so the base model is allowed in us-*.
-        "arn:${local.partition}:bedrock:us-*::foundation-model/${local.chat_base_model}",
+        "arn:${local.partition}:bedrock:${split("-", var.region)[0]}-*::foundation-model/${local.chat_base_model}",
       ],
       local.is_profile ? ["arn:${local.partition}:bedrock:${var.region}:${local.account_id}:inference-profile/${var.chat_model_id}"] : [],
       var.fallback_chat_model_id == "" ? [] : [
@@ -129,6 +133,8 @@ resource "aws_lambda_function" "api" {
       BEDROCK_CHAT_MODEL_ID          = var.chat_model_id
       BEDROCK_FALLBACK_CHAT_MODEL_ID = var.fallback_chat_model_id
       BEDROCK_EMBEDDING_MODEL_ID     = var.embedding_model_id
+      BEDROCK_API_KEY_SSM_PARAMETER  = var.bedrock_api_key_ssm_parameter
+      RETRIEVAL_MIN_SIMILARITY       = tostring(var.retrieval_min_similarity)
       AUTH_PROVIDER                  = "cognito"
       COGNITO_REGION                 = var.region
       COGNITO_USER_POOL_ID           = aws_cognito_user_pool.main.id

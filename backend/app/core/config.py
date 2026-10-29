@@ -26,24 +26,29 @@ class Settings(BaseSettings):
     # (the Next.js server proxies), so this stays narrow.
     cors_allowed_origins: str = "http://localhost:3000"
 
-    aws_region: str = "us-east-1"
+    aws_region: str = "ap-southeast-2"
+    aws_bearer_token_bedrock: SecretStr = SecretStr("")
+    bedrock_api_key_ssm_parameter: str = ""
     # "local" = extractive stand-in for dev without AWS; refused in production.
     llm_provider: Literal["bedrock", "local"] = "bedrock"
     # Primary: Amazon Nova Lite. Fallback (on errors only): DeepSeek V3.2. Empty disables it.
-    bedrock_chat_model_id: str = "us.amazon.nova-lite-v1:0"
+    bedrock_chat_model_id: str = "apac.amazon.nova-lite-v1:0"
     bedrock_fallback_chat_model_id: str = "deepseek.v3.2"
     # "local" = deterministic lexical embedder for dev/tests without AWS; refused in production.
     embedding_provider: Literal["bedrock", "local"] = "bedrock"
     bedrock_embedding_model_id: str = "amazon.titan-embed-text-v2:0"
     embedding_dimensions: int = 1024
-    bedrock_timeout_seconds: float = 20.0
-    bedrock_max_retries: int = 2
+    bedrock_timeout_seconds: float = Field(default=20.0, gt=0)
+    bedrock_max_retries: int = Field(default=0, ge=0, le=3)
+    embedding_timeout_seconds: float = Field(default=4.0, gt=0)
+    generation_timeout_seconds: float = Field(default=8.0, gt=0)
+    answer_timeout_seconds: float = Field(default=20.0, gt=0, le=20)
     max_output_tokens: int = 900
 
     # "local" = HS256 tokens minted by the Next.js dev server; refused in production.
     auth_provider: Literal["cognito", "local"] = "cognito"
     local_auth_secret: SecretStr = SecretStr("")
-    cognito_region: str = "us-east-1"
+    cognito_region: str = "ap-southeast-2"
     cognito_user_pool_id: str = ""
     cognito_app_client_id: str = ""
     admin_group_name: str = "admin"
@@ -52,7 +57,7 @@ class Settings(BaseSettings):
 
     # Retrieval and policy knobs (calibrated against eval/ — see docs/decisions.md).
     retrieval_top_k: int = Field(default=6, ge=1, le=12)
-    retrieval_min_similarity: float = Field(default=0.30, ge=0.0, le=1.0)
+    retrieval_min_similarity: float = Field(default=0.40, ge=0.0, le=1.0)
     max_question_chars: int = Field(default=1000, ge=50, le=4000)
 
     rate_limit_per_minute: int = 6

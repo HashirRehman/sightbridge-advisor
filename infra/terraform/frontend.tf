@@ -3,8 +3,12 @@ resource "aws_amplify_app" "web" {
   count        = var.enable_amplify ? 1 : 0
   name         = local.name
   repository   = var.github_repository_url
-  access_token = var.github_access_token
+  access_token = var.github_access_token == "" ? null : var.github_access_token
   platform     = "WEB_COMPUTE"
+
+  lifecycle {
+    ignore_changes = [access_token]
+  }
 
   # Server-side env vars for Next.js SSR must be written to .env.production at build time;
   # Amplify does not expose app environment variables to the SSR runtime otherwise.

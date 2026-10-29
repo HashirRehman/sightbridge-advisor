@@ -1,81 +1,78 @@
-# Deployment (AWS, Terraform)
+# Deployment
 
-Status: **not yet applied.** The Terraform in `infra/terraform` validates and lints cleanly, and the Lambda package was tested in AWS's official `python:3.12-arm64` Lambda image. Deployment is waiting on an AWS account where Bedrock can be invoked (see [Blocker](#blocker)).
+The application is deployed in **Asia Pacific (Sydney), `ap-southeast-2`**, using Terraform.
+Terraform manages RDS, Cognito, Lambda, API Gateway, document/artifact buckets, runtime IAM,
+SSM database parameters, Amplify and a $10 monthly budget. The state bucket is bootstrapped
+separately. Frontend builds use the `main` branch and `frontend/` directory.
 
-## Architecture (free-tier shaped)
+## Runtime
 
-| Component | Service | Notes |
-|---|---|---|
-| Web app | Amplify Hosting (Next.js SSR, `WEB_COMPUTE`) | Built from `frontend/`. Server-side env vars written to `.env.production` at build time |
-| API | API Gateway HTTP API → Lambda (Python 3.12, arm64, 1 GB, 29 s) | Throttling: 5 rps, burst 10. **Outside a VPC**, so no NAT or VPC-endpoint cost |
-| Auth | Cognito user pool | Invite-only, `admin` group, public client with USER_PASSWORD_AUTH |
-| Database | RDS PostgreSQL 16 `db.t4g.micro`, 20 GB gp2, single-AZ, pgvector | `rds.force_ssl=1`. Public endpoint protected by TLS and a 40-character generated password |
-| Secrets | SSM Parameter Store SecureString | Admin URL, app URL, app password. The API reads its URL at cold start |
-| Documents | Private S3 bucket (SSE, versioned, TLS-only policy) | Originals referenced by `documents.storage_key` |
-| Models | Bedrock: Nova Lite (primary), DeepSeek V3.2 (fallback), Titan Text Embeddings V2 | IAM limits invocation to exactly these models |
-| Logs | CloudWatch, 14-day retention | JSON lines with request IDs |
-| Cost guard | AWS Budgets at $10/month: 50/80/100% actual + 100% forecast | Emails `alarm_email` |
+| Component | Configuration |
+|---|---|
+| Frontend | Amplify Hosting, Next.js 15 SSR (`WEB_COMPUTE`) |
+| API | API Gateway HTTP API → Python 3.12 arm64 Lambda, 1 GB, 29-second timeout |
+| Database | PostgreSQL 16, `db.t4g.micro`, 20 GB gp2, single AZ, pgvector, TLS required |
+| Authentication | Invite-only Cognito user pool; advisor and admin reviewer accounts |
+| Secrets | SSM SecureString, fetched server-side; secret values are excluded from source and Lambda configuration |
+| Models | Amazon Nova Lite primary, DeepSeek V3.2 fallback, Titan V2 embeddings (1024 dimensions) |
+| Retrieval | Six passages, similarity floor 0.40; abbreviation expansion for 1031, 721 and DST |
+| Logs | Structured JSON with request IDs, 14-day CloudWatch retention |
+| Budget | $10 monthly threshold; notifications at 50/80/100% actual and 100% forecast |
 
-**Accepted tradeoff:** to avoid NAT ($32+/month) or interface endpoints (about $7/month each), the database endpoint is internet-reachable. It still requires TLS, the generated password and a least-privilege role. The production path is private subnets for RDS and Lambda, with endpoints for Bedrock, SSM and S3.
+The database has a public endpoint to avoid NAT Gateway/interface-endpoint costs. TLS,
+generated passwords and a least-privilege application role protect access. Private networking
+is the next production hardening step. Database changes go through ORM models and Alembic.
 
-**Expected cost:**
-- Worst case about **$18/month**, mostly RDS (instance, storage, public IPv4), if no RDS free allowance applies.
-- Bedrock usage is fractions of a cent per question with Nova Lite. Embedding the full corpus once is under $0.01.
-- Lambda, API Gateway, Cognito, CloudWatch and S3 stay within free allowances at demo volume.
+## Provision or update
 
-## Runbook
+Use Terraform **1.10+** (S3 native state locking), AWS CLI, Python 3.12/uv and Node 22.
+Configure the operator's AWS profile without committing credentials.
 
-```bash
-export AWS_PROFILE=<profile> AWS_REGION=us-east-1
+1. Set `AWS_PROFILE` and `AWS_REGION=ap-southeast-2` in the operator shell.
+2. Bootstrap a private, encrypted, versioned S3 state bucket in Sydney. Copy
+   `infra/terraform/backend.hcl.example` to the ignored `backend.hcl` and fill its bucket name.
+3. Configure ignored `terraform.tfvars` from its example, including the approved alert email,
+   calibrated retrieval floor and repository URL. Runtime secrets must already exist as
+   SecureStrings. Terraform receives parameter names, never the Bedrock secret value.
+4. Build the Lambda artifact with `cd backend && ./scripts/build_lambda.sh`.
+5. From `infra/terraform`, run `terraform init -backend-config=backend.hcl`,
+   `terraform plan -out=deployment.tfplan`, inspect the plan, and `terraform apply deployment.tfplan`.
+6. Apply `alembic upgrade head` using the admin database URL from SSM. Run
+   `python -m scripts.create_app_role` with `APP_DB_PASSWORD` supplied privately from SSM.
+7. Ingest the corpus with Titan and the document bucket configured. Existing embeddings may
+   be reused only when their model, input text and dimensions match exactly.
+8. Create advisor/admin Cognito users with notifications suppressed; assign the admin group.
+   Store reviewer passwords privately. No credentials belong in the repository.
+9. Connect Amplify to the repository using a private operator credential. If the app is
+   bootstrapped through the AWS API, import it as `aws_amplify_app.web[0]` before applying.
+   GitHub credentials are omitted from Terraform state; `access_token` changes are ignored.
+10. Start the Amplify `main` release build and run the verification below.
 
-# 0. Prove Bedrock works on this account (listing models is not enough)
-cd backend && uv run python -m scripts.bedrock_smoke
+The state contains generated database passwords and must stay private and encrypted. The
+reviewer credentials are kept in an ignored local file. Neither file is a submission artifact.
 
-# 1. Terraform state bucket (once)
-ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
-aws s3api create-bucket --bucket sightbridge-tfstate-$ACCOUNT
-aws s3api put-bucket-versioning --bucket sightbridge-tfstate-$ACCOUNT --versioning-configuration Status=Enabled
-aws s3api put-public-access-block --bucket sightbridge-tfstate-$ACCOUNT \
-  --public-access-block-configuration BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+## Time budget
 
-# 2. Build the Lambda package
-./scripts/build_lambda.sh                      # → backend/dist/lambda.zip
+Model calls share a 20-second deadline. Query embedding waits at most four seconds, the
+primary generation attempt at most eight, and fallback may use the remaining shared budget.
+SDK retries default to zero. The socket read timeout is 20 seconds; worker deadlines bound
+caller wait time independently of the SDK. Authentication and database I/O are outside this
+budget, so this is not a guarantee that every request completes within Lambda's limit.
 
-# 3. Provision
-cd ../infra/terraform
-cp backend.hcl.example backend.hcl && cp terraform.tfvars.example terraform.tfvars   # edit both
-terraform init -backend-config=backend.hcl
-terraform plan -out=tfplan && terraform apply tfplan
+In-flight HTTP requests cannot be cancelled in Python. A late result is discarded, but the
+attempt may still finish and be billed. Rotate expired runtime secrets through SSM and recycle
+Lambda instances so cached clients load the replacement.
 
-# 4. Database: migrations → least-privilege app role → corpus ingestion (operator machine)
-cd ../../backend
-export DATABASE_URL=$(aws ssm get-parameter --name /sightbridge-advisor/production/database-admin-url --with-decryption --query Parameter.Value --output text)
-uv run alembic upgrade head
-APP_DB_PASSWORD=$(aws ssm get-parameter --name /sightbridge-advisor/production/database-app-password --with-decryption --query Parameter.Value --output text) \
-  uv run python -m scripts.create_app_role
-DOCUMENTS_BUCKET=$(terraform -chdir=../infra/terraform output -raw documents_bucket) \
-  EMBEDDING_PROVIDER=bedrock uv run python -m scripts.ingest
-EMBEDDING_PROVIDER=bedrock LLM_PROVIDER=bedrock uv run python -m scripts.run_eval --label titan__nova-lite
+## Verify
 
-# 5. Reviewer accounts (passwords shared out of band, never committed)
-POOL=$(terraform -chdir=../infra/terraform output -raw cognito_user_pool_id)
-for u in advisor.reviewer@example.com admin.reviewer@example.com; do
-  aws cognito-idp admin-create-user --user-pool-id $POOL --username $u \
-    --user-attributes Name=email,Value=$u Name=email_verified,Value=true --message-action SUPPRESS
-  aws cognito-idp admin-set-user-password --user-pool-id $POOL --username $u --password '<strong password>' --permanent
-done
-aws cognito-idp admin-add-user-to-group --user-pool-id $POOL --username admin.reviewer@example.com --group-name admin
+- Health returns 200 with the database available; chat without a token returns 401.
+- Both reviewer logins succeed. Advisors receive 403 from the audit API; admins receive 200.
+- Ask about 1031 exchanges, DSTs and 721 exchanges. Check that citations open and quotes match.
+- Confirm advice/injection refusals and disclaimers, history ownership, and admin audit records.
+- Check the browser experience at desktop and mobile sizes.
+- Run the real-model eval and inspect saved answers, not just the automated score.
 
-# 6. Frontend: push the repo, then set enable_amplify=true (+ repository URL, token via
-#    TF_VAR_github_access_token) and apply again; Amplify builds main.
-
-# 7. Verify: GET <api_url>/api/health; sign in as both users; ask a question; check
-#    citations open; check the audit log as admin and the 403 as advisor.
-
-# Teardown
-terraform destroy
-```
-
-## Blocker
-
-The first account checked (`write-hashir`, Free plan) returns `ValidationException: Operation not allowed` for **every** Bedrock model, including Amazon's own Titan and Nova. IAM was confirmed as AdministratorAccess, so this is an account-level restriction that AWS applies to some new or Free-plan accounts. Fixes are an AWS Support case or an account without the restriction. The smoke test in step 0 detects it before anything is provisioned.
+The budget is an alert, **not a spending cap**. Eligible usage consumes credits/free allowances;
+resources such as RDS still have metered costs. Stop the stack when the demonstration is over.
+For teardown, review `terraform plan -destroy` before using `terraform destroy`. Nonempty S3
+buckets require an explicit retention or cleanup decision; the state bucket is retained.

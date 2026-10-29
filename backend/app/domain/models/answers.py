@@ -52,10 +52,12 @@ class AnswerDraft(BaseModel):
         description="False if the passages do not contain enough information to answer."
     )
     explanation: list[DraftClaim] = Field(
-        description="1-4 sentences that directly answer the question. Empty if not answerable."
+        default_factory=list,
+        description="1-4 sentences that directly answer the question. Empty if not answerable.",
     )
     key_considerations: list[DraftClaim] = Field(
-        description="0-5 short points an advisor should keep in mind, only if supported."
+        default_factory=list,
+        description="0-5 short points an advisor should keep in mind, only if supported.",
     )
 
 

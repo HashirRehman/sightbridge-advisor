@@ -10,12 +10,13 @@ variable "environment" {
 
 variable "region" {
   type    = string
-  default = "us-east-1"
+  default = "ap-southeast-2"
 }
 
 variable "alarm_email" {
-  description = "Receives budget alerts."
+  description = "Optional email recipient for budget alerts."
   type        = string
+  default     = ""
 }
 
 variable "monthly_budget_usd" {
@@ -49,7 +50,7 @@ variable "db_ingress_cidrs" {
 # --- Models ---
 variable "chat_model_id" {
   type    = string
-  default = "us.amazon.nova-lite-v1:0"
+  default = "apac.amazon.nova-lite-v1:0"
 }
 
 variable "fallback_chat_model_id" {
@@ -63,6 +64,22 @@ variable "embedding_model_id" {
 }
 
 # --- Backend ---
+variable "bedrock_api_key_ssm_parameter" {
+  description = "Pre-existing SecureString parameter name; Terraform never reads its value."
+  type        = string
+  default     = ""
+}
+
+variable "retrieval_min_similarity" {
+  description = "Similarity floor calibrated against the Titan evaluation."
+  type        = number
+  default     = 0.40
+  validation {
+    condition     = var.retrieval_min_similarity >= 0 && var.retrieval_min_similarity <= 1
+    error_message = "retrieval_min_similarity must be between 0 and 1."
+  }
+}
+
 variable "lambda_zip_path" {
   description = "Built by backend/scripts/build_lambda.sh."
   type        = string

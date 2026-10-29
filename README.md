@@ -6,9 +6,11 @@
 
 ## Live demo
 
-**Not deployed yet.** The Terraform is written and validated, and the Lambda package was tested in AWS's official runtime image. The AWS account available during the build blocks *all* Bedrock model invocation at account level (`Operation not allowed`, including Amazon's own models). Details and the exact runbook are in [docs/deployment.md](docs/deployment.md). Reviewer logins will be shared privately once the stack is live; no credentials are ever committed.
+[Open the advisor app](https://main.d4rzdcojhvk3v.amplifyapp.com) · [API health](https://uv91uglc6b.execute-api.ap-southeast-2.amazonaws.com//api/health)
 
-Everything below runs locally today.
+Deployed in **Sydney (`ap-southeast-2`)** with Terraform. Reviewer advisor/admin credentials
+are shared privately and are never committed. The one-page memo is available above.
+Deployment and maintenance instructions are in [docs/deployment.md](docs/deployment.md). Live checks and remaining limits are in [docs/verification.md](docs/verification.md).
 
 ## How it works
 
@@ -20,7 +22,7 @@ Browser → Next.js (login + same-origin proxy; tokens in httpOnly cookies)
 ```
 
 - **Grounding:**
-  - Each answer is built from at most 6 retrieved passages, with a similarity floor.
+  - Each answer is built from at most 6 retrieved passages, with a calibrated Titan similarity floor of 0.40. Retrieval expands 1031/721/DST abbreviations; policy, generation and auditing retain the original question.
   - The model must return claims, each tied to a passage ID and a **verbatim quote**.
   - Code then checks every citation:
     1. The passage was actually retrieved for this question.
@@ -87,14 +89,14 @@ Open http://localhost:3000 and sign in with a `LOCAL_DEMO_USERS` account. To use
 
 | Suite | Command | Result |
 |---|---|---|
-| Backend unit + integration (real Postgres/pgvector, migrations applied) | `cd backend && uv run pytest` | **94 passed** |
-| Static checks | `ruff check`, `ruff format --check`, `mypy --strict` | clean (83 files) |
+| Backend unit + integration (real Postgres/pgvector, migrations applied) | `cd backend && uv run pytest` | **114 passed** |
+| Static checks | `ruff check`, `ruff format --check`, `mypy app tests scripts` (strict configured) | clean (90 files typechecked) |
 | Frontend e2e (Playwright, desktop + mobile; backend stubbed) | `cd frontend && npm run test:e2e` | **16 passed** |
 | Frontend static | `npm run lint && npm run typecheck && npm run build` | clean |
 | Infrastructure | `terraform validate`, `tflint` | clean |
 
 What the tests pin down:
-- Each refusal path, with no model call made.
+- Injection and explicit out-of-scope refusals make no model call. Personalized advice is refused in code; optional general education still passes citation verification.
 - Fabricated passage IDs and fabricated quotes are never shown.
 - The disclaimer appears on every outcome.
 - Bedrock errors and malformed output fail safely, and the fallback model is used only on error.
@@ -108,11 +110,13 @@ What the tests pin down:
 |---|---|
 | Local stand-ins (lexical embedder + extractive generator), similarity floor 0.20 | **22/24** |
 | Same, floor 0.30 | 18/24 |
-| Titan + Nova Lite / DeepSeek V3.2 | **pending**: blocked by the AWS account restriction |
+| Titan + Nova Lite, abbreviation expansion, floor 0.40 | **23/24** |
+| Titan + DeepSeek V3.2, abbreviation expansion, floor 0.30 | **15/24** |
 
 - **Passing at 0.20:** every policy category (advice 3/3, injection 2/2, out-of-scope 2/2), and every response carried the disclaimer.
 - **The two misses** are "insufficient evidence" questions. Retrieval found related passages, and the extractive stand-in can't judge relevance. This is evidence that a similarity floor alone is not enough, and why the real model's `answerable` flag plus citation verification are the second layer.
 - **These local runs** test the pipeline and policies, not LLM answer quality.
+- **Real-model runs** compare models with fallback disabled. Nova passed 23/24 at 0.40 (22/24 at 0.30); DeepSeek passed 15/24 at 0.30 with a 20-second generation allowance. All carried the disclaimer. Reports include complete answers, evidence and actual model/token usage; automated passes do not establish factual correctness or completeness. See [eval details](backend/eval/README.md).
 
 ## Security decisions
 
@@ -120,15 +124,16 @@ What the tests pin down:
 - **Browser tokens:** tokens never reach browser JavaScript. Next.js keeps them in httpOnly, SameSite=Lax cookies and calls the API server-to-server through an allow-listed proxy with Origin and JSON checks (CSRF).
 - **Ownership:** it is part of every conversation query, so another advisor's conversation returns 404.
 - **Least privilege:**
-  - IAM can invoke only the three approved models.
+  - Model selection is configured server-side; runtime secrets are fetched from SSM SecureString.
   - The database role can read the corpus and only *append* exchanges.
   - Secrets live in SSM SecureString, read at cold start. The API has no plaintext credentials in env vars or git.
 - **Rate limits and caps:** a per-user rate limit (6/min, 60/hour) plus API Gateway throttling. Questions are capped at 1,000 characters, retrieval at 6 passages, and output at 900 tokens.
+- **Model-call deadlines:** 20 seconds shared across embeddings and generation; four seconds for query embedding and eight for the primary attempt. Fallback uses remaining time. Timed-out HTTP calls may still finish and be billed; their results are discarded. Auth/database I/O are outside this bound.
 - **Error responses:** never echo input or internals, and every response carries a request ID that matches the structured logs.
 
 ## Known limitations
 
-- **No deployment yet**, and therefore no Bedrock-quality eval numbers (see above).
+- **The real-model eval is small and also informed calibration.** Nova under-answered the post-2017 personal-property question; some comparison phrasings can also fail citation verification and return unsupported. Scores measure outcomes and source selection, not full factual correctness or completeness; saved answers require review.
 - **Each question is answered independently.** Follow-ups such as "and for a DST?" don't use earlier turns for retrieval.
 - **Citation verification proves traceability, not truth.** A real quote can still be paraphrased wrongly. Admin review of the audit log covers that.
 - **The regex policy rules** can miss novel phrasing or occasionally over-refuse. They're centralised and table-tested.
@@ -138,7 +143,7 @@ What the tests pin down:
 
 ## What I'd build next
 
-1. Deploy, run the Bedrock eval on Nova Lite and DeepSeek V3.2, and calibrate the Titan similarity floor from the results.
+1. Expand the eval with held-out questions and human review; improve completeness and the conservative under-answer on personal-property rules.
 2. Conversation-aware query rewriting for follow-ups, still answered statelessly against the corpus.
 3. An approved-document admin workflow: upload, compliance sign-off, versioning and re-ingest. Real use needs Sightbridge's own PPMs and FAQs, not only public sources.
 4. Hybrid retrieval (BM25 plus vectors) if the eval shows recall misses on exact terms such as "45-day".

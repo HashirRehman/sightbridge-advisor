@@ -1,24 +1,44 @@
 # RAG evaluation
 
-`questions.json` has 24 questions across seven categories: answerable 1031, DST and 721/REIT questions; questions with insufficient evidence; out-of-scope questions; personalised advice; and prompt injection. Each has an expected outcome. Answerable items also list the sources a correct answer should cite.
+The 24 questions cover 1031, DST, 721/REIT, regulatory information, missing evidence,
+personalized advice, out-of-scope requests and prompt injection.
+
+An automated pass requires the expected status, refusal reason where specified, at least
+one expected source for answered items, and the fixed disclaimer. This is a behavioral and
+source-selection check, not an independent factual-quality rating. Review the saved answer
+text and supporting quotes for completeness and faithful paraphrasing.
+
+## Real-model results (28 Oct 2026)
+
+| Configuration | Score | Notes |
+|---|---|---|
+| Titan + Nova Lite; floor 0.30; abbreviation expansion | 22/24 | Eight-second generation budget |
+| Titan + Nova Lite; floor 0.40; abbreviation expansion | **23/24** | Selected deployment setting; all refusal and evidence-gap categories pass |
+| Titan + DeepSeek V3.2; floor 0.30; abbreviation expansion | 15/24 | Twenty-second generation budget; nine answers rejected by citation verification |
+
+The remaining Nova miss asks whether equipment/personal property qualifies after 2017.
+The pipeline returned unsupported despite relevant corpus material. This is conservative
+under-answering, not evidence that the question is outside the corpus. The 24-question set
+also informed calibration; there is no separate held-out benchmark.
+
+Reports are saved in `results/titan-nova-sim-0.30-expanded.json`,
+`results/titan-nova-strict-sim-0.40-expanded.json` and
+`results/titan-deepseek-sim-0.30-expanded.json`. They retain questions, rendered answers,
+structured claims, citation quotes/links, actual model IDs, latency and separate input/output
+token counts. Counts cover successful returned generations, not failed attempts.
+
+## Reproduce
+
+First ingest using Titan; lexical-development vectors cannot be compared with Titan queries.
+Configure AWS_REGION=ap-southeast-2 and the runtime secret privately, then from backend:
 
 ```bash
-uv run python -m scripts.run_eval --label <name>   # writes results/<name>.json
+EMBEDDING_PROVIDER=bedrock uv run python -m scripts.ingest
+RETRIEVAL_MIN_SIMILARITY=0.40 EMBEDDING_PROVIDER=bedrock uv run python -m scripts.run_eval --chat-model apac.amazon.nova-lite-v1:0 --label titan-nova-recheck
+RETRIEVAL_MIN_SIMILARITY=0.30 GENERATION_TIMEOUT_SECONDS=20 EMBEDDING_PROVIDER=bedrock uv run python -m scripts.run_eval --chat-model deepseek.v3.2 --label titan-deepseek-recheck
 ```
 
-An item passes when:
-- the status matches;
-- the refusal reason matches, where one is specified;
-- answered items cite at least one expected source.
-
-The disclaimer is checked on every response.
-
-## Results so far
-
-| Run | Embeddings / generator | Passed | Notes |
-|---|---|---|---|
-| `local-sim-0.30` | local lexical / local extractive | 18/24 | Floor too high for lexical scores; answerable questions fall to "unsupported" |
-| `local-sim-0.20` | local lexical / local extractive | 22/24 | All policy categories pass. Two insufficient-evidence questions are "answered" because the extractive stand-in can't judge relevance |
-| `local-sim-0.15`, `local-sim-0.25` | local / local | 21/24, 19/24 | Threshold sweep |
-
-The local runs test **policy, retrieval plumbing, verification and disclaimers**. They say nothing about LLM answer quality. Bedrock (Titan V2 + Claude Haiku) results will be added once AWS access is approved. A similarity floor alone can't separate related-but-unanswerable questions from answerable ones; that is the job of the model's `answerable` flag plus citation verification (see docs/decisions.md D9).
+`--chat-model` forces Bedrock generation and disables fallback for isolated comparisons.
+Every report is written even when cases fail; any failed case returns exit code 1. Model
+responses can vary between runs even at temperature zero. Historical local stand-in reports
+remain unchanged: 22/24 at floor 0.20 and 18/24 at 0.30; those did not measure LLM quality.

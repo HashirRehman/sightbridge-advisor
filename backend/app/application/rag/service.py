@@ -7,6 +7,7 @@ exception escapes for expected failures.
 
 import logging
 
+from app.application.rag.budget import answer_budget
 from app.domain.interfaces.embedding import Embedder
 from app.domain.interfaces.generation import AnswerGenerator, GenerationError, GenerationMode
 from app.domain.interfaces.retrieval import PassageRetriever
@@ -19,6 +20,7 @@ from app.domain.models.answers import (
 from app.domain.models.documents import RetrievedPassage
 from app.domain.policies.citation_verifier import verify_answer
 from app.domain.policies.question_policy import PolicyOutcome, evaluate_question
+from app.domain.policies.retrieval_query import expand_retrieval_query
 
 logger = logging.getLogger(__name__)
 
@@ -60,14 +62,20 @@ class AnswerService:
         *,
         top_k: int,
         min_similarity: float,
+        timeout_seconds: float = 20.0,
     ) -> None:
         self._embedder = embedder
         self._retriever = retriever
         self._generator = generator
         self._top_k = top_k
         self._min_similarity = min_similarity
+        self._timeout_seconds = timeout_seconds
 
     def answer(self, question: str) -> AssistantAnswer:
+        with answer_budget(self._timeout_seconds):
+            return self._answer(question)
+
+    def _answer(self, question: str) -> AssistantAnswer:
         decision = evaluate_question(question)
         logger.info(
             "policy decision",
@@ -84,7 +92,7 @@ class AnswerService:
 
         try:
             passages = self._retriever.search(
-                self._embedder.embed_query(question),
+                self._embedder.embed_query(expand_retrieval_query(question)),
                 top_k=self._top_k,
                 min_similarity=self._min_similarity,
             )

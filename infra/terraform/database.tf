@@ -8,8 +8,9 @@ resource "aws_db_parameter_group" "postgres" {
   family = "postgres${var.db_engine_version}"
 
   parameter {
-    name  = "rds.force_ssl"
-    value = "1" # reject any non-TLS connection
+    name         = "rds.force_ssl"
+    value        = "1" # reject any non-TLS connection
+    apply_method = "pending-reboot"
   }
   parameter {
     name  = "log_min_duration_statement"

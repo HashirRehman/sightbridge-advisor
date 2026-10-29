@@ -91,3 +91,21 @@ def test_bedrock_client_error_becomes_generation_error() -> None:
 def test_schema_violating_output_becomes_generation_error() -> None:
     with pytest.raises(GenerationError, match="malformed"):
         _generate(FakeConverseClient({"answerable": "maybe", "explanation": "not a list"}))
+
+
+def test_optional_considerations_can_be_omitted() -> None:
+    result = _generate(
+        FakeConverseClient(
+            {
+                "answerable": True,
+                "explanation": [
+                    {
+                        "text": "Property must be identified within 45 days.",
+                        "citations": [{"passage_id": "P1", "quote": "identified within 45 days"}],
+                    }
+                ],
+            }
+        )
+    )
+    assert result.draft.explanation
+    assert result.draft.key_considerations == []

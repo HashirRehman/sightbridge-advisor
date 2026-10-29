@@ -25,6 +25,7 @@ def build_embedder(settings: Settings) -> Embedder:
         build_bedrock_runtime_client(settings),
         settings.bedrock_embedding_model_id,
         settings.embedding_dimensions,
+        settings.embedding_timeout_seconds,
     )
 
 
@@ -44,8 +45,14 @@ def build_generator(settings: Settings) -> AnswerGenerator:
     if settings.bedrock_fallback_chat_model_id:
         model_ids.append(settings.bedrock_fallback_chat_model_id)
     generators: list[AnswerGenerator] = [
-        BedrockAnswerGenerator(client, model_id, settings.max_output_tokens, settings.aws_region)
-        for model_id in model_ids
+        BedrockAnswerGenerator(
+            client,
+            model_id,
+            settings.max_output_tokens,
+            settings.aws_region,
+            settings.generation_timeout_seconds if index == 0 else settings.answer_timeout_seconds,
+        )
+        for index, model_id in enumerate(model_ids)
     ]
     return generators[0] if len(generators) == 1 else FallbackAnswerGenerator(generators)
 
@@ -59,4 +66,5 @@ def build_answer_service(
         generator,
         top_k=settings.retrieval_top_k,
         min_similarity=settings.retrieval_min_similarity,
+        timeout_seconds=settings.answer_timeout_seconds,
     )

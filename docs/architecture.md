@@ -14,7 +14,7 @@ Browser ──HTTPS──▶ Next.js (Amplify Hosting)
                                      ChatService (application layer)
                                        1. validate + per-user rate limit
                                        2. AdvicePolicy (deterministic: injection, personalised advice, scope)
-                                       3. embed question (Bedrock Titan v2)
+                                       3. expand topic abbreviations and embed query (Bedrock Titan v2)
                                        4. pgvector top-k + similarity floor
                                        5. generate structured answer (Bedrock Nova Lite, DeepSeek V3.2 fallback, via LangChain)
                                        6. CitationVerifier (passage id ∈ retrieved, quote ∈ passage text)
@@ -49,3 +49,5 @@ Managed exclusively through SQLAlchemy ORM models (`app/infrastructure/database/
 ## Local development
 
 `docker compose up -d` starts PostgreSQL 16 + pgvector on `localhost:5433`. The API runs with `uv run uvicorn app.main:app --port 8080`, and the web app with `npm run dev`.
+
+Regional infrastructure runs in Sydney (`ap-southeast-2`). Model calls share a 20-second wall-clock budget; runtime secrets are loaded server-side from SSM SecureString. See [deployment.md](deployment.md) for operating limits and verification.

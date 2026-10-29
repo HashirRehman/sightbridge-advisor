@@ -94,3 +94,14 @@ Short records of decisions that shaped the build. Format: decision, reason, alte
   - botocore models are trimmed to the 7 services used, and uvicorn is dev-only: 45 MB zipped, 174 MB unzipped.
   - Verified by invoking the handler inside `public.ecr.aws/lambda/python:3.12-arm64`.
 - **Tradeoff:** Terraform state contains the generated passwords, so it lives in a private, versioned, encrypted S3 bucket.
+
+
+### D14. Sydney deployment and measured model limits
+- Deploy regional infrastructure in `ap-southeast-2`; region selection was checked against the account before provisioning.
+- Use Terraform 1.10+ for native S3 state locking; keep the versioned, encrypted state bucket private.
+- Model calls share 20 seconds, with a four-second query embedding limit and eight-second primary generation limit. Fallback uses remaining time; SDK retries default to zero.
+- Structured answers may omit empty explanation/consideration lists. Missing lists default to empty; missing answerability, malformed claims and unverifiable citations still fail closed.
+- Expand 1031/721/DST abbreviations for embeddings while preserving the original question for policy, generation and auditing. The real eval exposed a recall miss on 721 versus 1031 that this recovered.
+- Select Titan's 0.40 floor using the 24-question eval: Nova Lite passed 23/24 versus 22/24 at 0.30. These are behavioral/source-selection scores; the set was also used for calibration and is not a held-out quality benchmark.
+- A standalone DeepSeek run with a 20-second allowance passed 15/24. Citation verification rejected nine answers. It remains an error fallback, not the primary.
+- Runtime secrets stay in SecureString; Terraform stores only the Bedrock parameter name. Repository connection is bootstrapped privately and imported into Terraform so its token is not retained in state.

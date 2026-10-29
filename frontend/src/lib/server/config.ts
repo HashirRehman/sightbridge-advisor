@@ -7,7 +7,7 @@ const schema = z
     APP_ENV: z.enum(["local", "production"]).default("local"),
     API_BASE_URL: z.url(),
     AUTH_PROVIDER: z.enum(["cognito", "local"]).default("cognito"),
-    COGNITO_REGION: z.string().default("us-east-1"),
+    COGNITO_REGION: z.string().default("ap-southeast-2"),
     COGNITO_APP_CLIENT_ID: z.string().default(""),
     LOCAL_AUTH_SECRET: z.string().default(""),
     // JSON array of {email, password, role}; local development only.

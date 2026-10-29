@@ -9,15 +9,15 @@ import json
 import sys
 import time
 
-import boto3
 from botocore.exceptions import ClientError
 
 from app.core.config import get_settings
+from app.infrastructure.bedrock.client import build_bedrock_runtime_client
 
 
 def main() -> int:
     settings = get_settings()
-    runtime = boto3.client("bedrock-runtime", region_name=settings.aws_region)
+    runtime = build_bedrock_runtime_client(settings)
     failures = 0
     chat_models = [settings.bedrock_chat_model_id, settings.bedrock_fallback_chat_model_id]
     for model in filter(None, chat_models):
@@ -44,10 +44,7 @@ def main() -> int:
         failures += 1
         print(f"FAIL  {settings.bedrock_embedding_model_id}  {exc.response['Error']['Message']}")
     if failures:
-        print(
-            "\n'Operation not allowed' on every model = account-level Bedrock restriction "
-            "(common on new/Free-plan accounts): open an AWS Support case."
-        )
+        print("\nCheck the individual model errors above before proceeding.")
     return 1 if failures else 0
 
 
