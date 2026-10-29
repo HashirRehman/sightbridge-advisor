@@ -1,4 +1,4 @@
-import { MessageSquare, Plus } from "lucide-react";
+import { ChevronRight, MessageSquare, Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -21,11 +21,11 @@ export function ConversationList({
   onNew: () => void;
 }) {
   return (
-    <div className="flex h-full flex-col gap-4">
+    <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
       <Button variant="outline" className="justify-start" onClick={onNew}>
         <Plus aria-hidden /> New conversation
       </Button>
-      <div className="min-h-0 flex-1 space-y-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain">
         <h2 className="text-muted-foreground px-2 pb-1 text-xs font-semibold tracking-wide uppercase">
           History
         </h2>
@@ -46,7 +46,7 @@ export function ConversationList({
                   onClick={() => onSelect(c.id)}
                   aria-current={c.id === activeId ? "true" : undefined}
                   className={cn(
-                    "flex w-full items-start gap-2.5 rounded-md px-2 py-2 text-left text-sm transition-colors",
+                    "flex w-full cursor-pointer items-start gap-2.5 rounded-md px-2 py-2 text-left text-sm transition-colors",
                     c.id === activeId ? "bg-secondary font-medium" : "hover:bg-muted",
                   )}
                 >
@@ -58,6 +58,7 @@ export function ConversationList({
                       {c.exchange_count === 1 ? "question" : "questions"}
                     </span>
                   </span>
+                  <ChevronRight className="text-muted-foreground mt-0.5 size-4 shrink-0" aria-hidden />
                 </button>
               </li>
             ))}

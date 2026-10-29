@@ -26,6 +26,15 @@ logger = logging.getLogger(__name__)
 
 MAX_CONTEXT_CHARS = 9000
 
+NOTICE_CAPABILITIES = (
+    "I can help you understand 1031 exchanges, Delaware Statutory Trusts (DSTs), and 721 "
+    "exchanges into REIT operating partnerships. Ask about how they work, deadlines, general "
+    'requirements, risks, or how they compare. For example: "How does a 1031 exchange work?" '
+    'or "How is a 721 exchange different?" My educational answers use approved public '
+    "sources and link to the supporting passages. I can't recommend investments or give "
+    "personalized tax, legal, or investment advice."
+)
+
 NOTICE_PERSONALIZED = (
     "I can't make recommendations or assess a specific person's situation. That requires a "
     "qualified tax, legal or financial professional who knows the full facts."
@@ -86,6 +95,12 @@ class AnswerService:
             return _refused(AnswerReason.PROMPT_INJECTION, NOTICE_INJECTION)
         if decision.outcome is PolicyOutcome.OUT_OF_SCOPE:
             return _refused(AnswerReason.OUT_OF_SCOPE, NOTICE_OUT_OF_SCOPE)
+        if decision.outcome is PolicyOutcome.CAPABILITIES:
+            return AssistantAnswer(
+                status=AnswerStatus.ANSWERED,
+                reason=AnswerReason.CAPABILITIES,
+                notice=NOTICE_CAPABILITIES,
+            )
 
         personalized = decision.outcome is PolicyOutcome.PERSONALIZED_ADVICE
         mode = GenerationMode.GENERAL_EDUCATION if personalized else GenerationMode.STANDARD

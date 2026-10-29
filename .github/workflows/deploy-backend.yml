@@ -1,0 +1,74 @@
+name: Deploy backend
+
+on:
+  workflow_run:
+    workflows: [CI]
+    branches: [main]
+    types: [completed]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: production-backend
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      vars.AWS_DEPLOY_ROLE_ARN != '' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      LAMBDA_FUNCTION_NAME: ${{ vars.LAMBDA_FUNCTION_NAME }}
+      ARTIFACTS_BUCKET: ${{ vars.ARTIFACTS_BUCKET }}
+      API_BASE_URL: ${{ vars.API_BASE_URL }}
+      RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - name: Skip a superseded release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          current=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)
+          if [ "$current" = "$RELEASE_SHA" ]; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: astral-sh/setup-uv@v6
+        if: steps.release.outputs.current == 'true'
+        with:
+          python-version: "3.12"
+      - name: Build tested code for Lambda
+        if: steps.release.outputs.current == 'true'
+        run: bash backend/scripts/build_lambda.sh
+      - uses: aws-actions/configure-aws-credentials@v4
+        if: steps.release.outputs.current == 'true'
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: sightbridge-${{ github.run_id }}
+      - name: Publish and deploy
+        if: steps.release.outputs.current == 'true'
+        run: |
+          set -euo pipefail
+          test -n "$ARTIFACTS_BUCKET" && test -n "$LAMBDA_FUNCTION_NAME"
+          key="releases/$RELEASE_SHA.zip"
+          aws s3api put-object --bucket "$ARTIFACTS_BUCKET" --key "$key" --body backend/dist/lambda.zip --server-side-encryption AES256 > /dev/null
+          aws lambda update-function-code --function-name "$LAMBDA_FUNCTION_NAME" --s3-bucket "$ARTIFACTS_BUCKET" --s3-key "$key" > /dev/null
+          aws lambda wait function-updated-v2 --function-name "$LAMBDA_FUNCTION_NAME"
+      - name: Check the deployed API
+        if: steps.release.outputs.current == 'true'
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 3 "${API_BASE_URL%/}/api/health"
+          status=$(curl --silent --show-error -o /dev/null -w '%{http_code}' -X POST "${API_BASE_URL%/}/api/chat" -H 'Content-Type: application/json' -d '{"question":"What can you do?"}')
+          test "$status" = "401"

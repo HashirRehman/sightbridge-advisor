@@ -129,11 +129,66 @@ test("admins can review and filter the audit log", async ({ page }) => {
   await expect(page.getByText("Total exchanges").locator("..")).toContainText("7");
 
   await page.getByLabel("Outcome").click();
+  const trigger = await page.getByLabel("Outcome", { exact: true }).boundingBox();
+  const menu = await page.getByRole("listbox").boundingBox();
+  expect(trigger).not.toBeNull();
+  expect(menu).not.toBeNull();
+  expect(menu!.y >= trigger!.y + trigger!.height || menu!.y + menu!.height <= trigger!.y).toBe(true);
+  expect(menu!.x + menu!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
   await page.getByRole("option", { name: "Refused" }).click();
   await expect.poll(() => requested.at(-1)).toContain("status=refused");
 
-  await page.getByRole("button", { name: "What is a Delaware Statutory Trust?" }).click();
+  const question = page.getByRole("button", { name: "What is a Delaware Statutory Trust?" });
+  await expect(question.locator("svg")).toBeVisible();
+  await expect(question).toHaveAttribute("aria-haspopup", "dialog");
+  await question.click();
   await expect(page.getByText("Answer shown to the user")).toBeVisible();
+});
+
+test("capabilities answers show help without a refusal or fabricated sources", async ({ page }) => {
+  await mockApi(page, {
+    chat: (route) => json(route, exchange({
+      question: "What kind of information you can give to me",
+      reason: "capabilities",
+      notice: "I can help you understand 1031 exchanges, DSTs, and 721 exchanges. For example: How does a 1031 exchange work?",
+      explanation: [], key_considerations: [], citations: [],
+    })),
+  });
+  await signIn(page);
+  await page.getByLabel(/Ask about/).fill("What kind of information you can give to me");
+  await page.getByRole("button", { name: "Send question" }).click();
+  const answer = page.getByRole("article", { name: "Assistant answer" });
+  await expect(answer).toContainText("I can help you understand");
+  await expect(answer).toContainText("Educational information only");
+  await expect(answer.getByText("Refused", { exact: true })).toHaveCount(0);
+  await expect(answer.getByRole("heading", { name: "Sources" })).toHaveCount(0);
+});
+
+test("long conversations scroll inside the message panel with the composer visible", async ({ page }) => {
+  await mockApi(page);
+  const id = "11111111-1111-4111-8111-111111111111";
+  await page.route(`**/api/proxy/conversations/${id}`, (route) => json(route, {
+    id, title: "Long conversation", exchanges: Array.from({ length: 12 }, () => exchange()),
+  }));
+  await signIn(page);
+  await page.goto(`/?c=${id}`);
+  const messages = page.getByRole("region", { name: "Conversation messages" });
+  await expect(messages.getByRole("article")).toHaveCount(12);
+  await messages.evaluate((element) => { element.scrollTop = 0; });
+  const rect = await messages.boundingBox();
+  await page.mouse.move(rect!.x + rect!.width / 2, rect!.y + 40);
+  await page.mouse.wheel(0, 500);
+  await expect.poll(() => messages.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  const metrics = await page.evaluate(() => ({
+    scrollTop: window.scrollY,
+    documentHeight: document.documentElement.scrollHeight,
+    viewportHeight: window.innerHeight,
+  }));
+  expect(metrics.scrollTop).toBe(0);
+  expect(metrics.documentHeight).toBeLessThanOrEqual(metrics.viewportHeight + 1);
+  const composer = await page.getByLabel(/Ask about/).boundingBox();
+  expect(composer!.y).toBeGreaterThan(0);
+  expect(composer!.y + composer!.height).toBeLessThanOrEqual(metrics.viewportHeight);
 });
 
 test("the chat layout never scrolls horizontally", async ({ page }) => {

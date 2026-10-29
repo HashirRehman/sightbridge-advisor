@@ -11,6 +11,7 @@ from enum import StrEnum
 
 class PolicyOutcome(StrEnum):
     ALLOW = "allow"
+    CAPABILITIES = "capabilities"
     PROMPT_INJECTION = "prompt_injection"
     PERSONALIZED_ADVICE = "personalized_advice"
     OUT_OF_SCOPE = "out_of_scope"
@@ -78,6 +79,17 @@ _OUT_OF_SCOPE = re.compile(
     re.IGNORECASE,
 )
 
+# Match complete requests for application help, not questions about arbitrary subjects.
+_CAPABILITIES = re.compile(
+    r"(?:what (?:can you do|do you do|is your purpose|are your capabilities|can i ask you)|"
+    r"who are you|how can you help(?: me)?|what can you help(?: me)? with|"
+    r"what (?:topics|questions) (?:can|do) you (?:cover|answer|help with)|"
+    r"what (?:kind of |types? of )?information (?:can you|you can|do you) "
+    r"(?:give|provide|offer|share)(?: to)?(?: me)?|"
+    r"tell me (?:about yourself|what you can do)|help)(?:[.!?]+)?",
+    re.IGNORECASE,
+)
+
 # Advice phrasing that must never appear in a generated answer, whatever the question was.
 _ADVICE_LANGUAGE = _rx(
     r"\b(you|your clients?) should (invest|buy|sell|choose|consider investing|do)\b",
@@ -101,6 +113,8 @@ def evaluate_question(question: str) -> PolicyDecision:
         return PolicyDecision(PolicyOutcome.PERSONALIZED_ADVICE, in_scope, rule)
     if not in_scope and (m := _OUT_OF_SCOPE.search(question)):
         return PolicyDecision(PolicyOutcome.OUT_OF_SCOPE, in_scope, m.group(0).lower())
+    if _CAPABILITIES.fullmatch(question.strip()):
+        return PolicyDecision(PolicyOutcome.CAPABILITIES, in_scope, "assistant_capabilities")
     # Questions with no topical vocabulary are still allowed through: retrieval decides.
     return PolicyDecision(PolicyOutcome.ALLOW, in_scope)
 

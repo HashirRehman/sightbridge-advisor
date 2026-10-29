@@ -150,6 +150,27 @@ def test_client_cannot_assert_identity_or_role(client: TestClient) -> None:
     assert client.get("/api/me", headers=auth(ADVISOR_A)).json()["is_admin"] is False
 
 
+def test_capabilities_answer_is_saved_and_audited_without_a_model(client: TestClient) -> None:
+    from app.application.rag.service import AnswerService
+    from tests.test_answer_service import FakeEmbedder, FakeGenerator, FakeRetriever
+
+    embedder = FakeEmbedder(fail=True)
+    generator = FakeGenerator(RuntimeError("must not be called"))
+    answers = AnswerService(embedder, FakeRetriever([]), generator, top_k=6, min_similarity=0.4)
+    client.app.dependency_overrides[get_answer_service] = lambda: answers  # type: ignore[attr-defined]
+    response = _ask(client, ADVISOR_A, "What kind of information you can give to me")
+    assert response.status_code == 200
+    body = response.json()
+    assert (body["status"], body["reason"]) == ("answered", "capabilities")
+    assert "1031" in body["notice"] and "For example:" in body["notice"]
+    assert body["citations"] == [] and body["disclaimer"] == DISCLAIMER
+    assert embedder.calls == 0 and generator.calls == []
+    audit = client.get("/api/admin/exchanges", headers=auth(ADMIN)).json()["items"]
+    assert len(audit) == 1 and audit[0]["id"] == body["id"]
+    assert audit[0]["model_id"] is None
+    assert audit[0]["answer_text"].endswith(DISCLAIMER)
+
+
 def test_audit_log_is_admin_only_and_shows_all_users(client: TestClient) -> None:
     _ask(client, ADVISOR_A, "What is a DST?")
     _ask(client, ADVISOR_B, "Should I buy a DST?")

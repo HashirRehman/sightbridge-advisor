@@ -1,0 +1,699 @@
+{
+  "summary": {
+    "region": "ap-southeast-2",
+    "chunks": 284,
+    "documents": 13,
+    "candidate_indexing_seconds": 10.2,
+    "limits": "Source-selection proxy on the existing small eval set; no answer-quality or held-out evaluation. No similarity floor applied: models need separate calibration.",
+    "models": {
+      "amazon.titan-embed-text-v2:0": {
+        "questions": 14,
+        "top_1_source_matches": 14,
+        "top_3_source_matches": 14,
+        "top_6_source_matches": 14,
+        "median_query_embedding_ms": 609.0
+      },
+      "cohere.embed-english-v3": {
+        "questions": 14,
+        "top_1_source_matches": 14,
+        "top_3_source_matches": 14,
+        "top_6_source_matches": 14,
+        "median_query_embedding_ms": 612.5
+      }
+    }
+  },
+  "results": [
+    {
+      "id": "1031-how",
+      "model": "amazon.titan-embed-text-v2:0",
+      "query_embedding_ms": 633,
+      "top_1_source_match": true,
+      "top_3_source_match": true,
+      "top_6_source_match": true,
+      "sources": [
+        "irs-like-kind-real-estate-tips",
+        "irs-form-8824-instructions",
+        "irs-like-kind-real-property-only",
+        "irs-form-8824-instructions",
+        "irs-like-kind-real-estate-tips",
+        "irs-form-8824-instructions"
+      ],
+      "similarities": [
+        0.7678,
+        0.7455,
+        0.6785,
+        0.659,
+        0.6575,
+        0.6361
+      ]
+    },
+    {
+      "id": "1031-how",
+      "model": "cohere.embed-english-v3",
+      "query_embedding_ms": 622,
+      "top_1_source_match": true,
+      "top_3_source_match": true,
+      "top_6_source_match": true,
+      "sources": [
+        "irs-form-8824-instructions",
+        "irs-like-kind-real-estate-tips",
+        "irs-form-8824-instructions",
+        "irs-form-8824-instructions",
+        "irs-like-kind-real-estate-tips",
+        "irs-like-kind-real-property-only"
+      ],
+      "similarities": [
+        0.7015,
+        0.6857,
+        0.6328,
+        0.6116,
+        0.6085,
+        0.6077
+      ]
+    },
+    {
+      "id": "1031-deadlines",
+      "model": "amazon.titan-embed-text-v2:0",
+      "query_embedding_ms": 464,
+      "top_1_source_match": true,
+      "top_3_source_match": true,
+      "top_6_source_match": true,
+      "sources": [
+        "irs-form-8824-instructions",
+        "cfr-26-1-1031k-1",
+        "cfr-26-1-1031k-1",
+        "cfr-26-1-1031k-1",
+        "cfr-26-1-1031k-1",
+        "cfr-26-1-1031k-1"
+      ],
+      "similarities": [
+        0.6551,
+        0.6194,
+        0.6028,
+        0.5733,
+        0.5567,
+        0.5512
+      ]
+    },
+    {
+      "id": "1031-deadlines",
+      "model": "cohere.embed-english-v3",
+      "query_embedding_ms": 628,
+      "top_1_source_match": true,
+      "top_3_source_match": true,
+      "top_6_source_match": true,
+      "sources": [
+        "irs-form-8824-instructions",
+        "irs-form-8824-instructions",
+        "cfr-26-1-1031k-1",
+        "cfr-26-1-1031k-1",
+        "irs-form-8824-instructions",
+        "cfr-26-1-1031k-1"
+      ],
+      "similarities": [
+        0.6647,
+        0.6139,
+        0.5958,
+        0.5956,
+        0.5953,
+        0.5877
+      ]
+    },
+    {
+      "id": "1031-personal-property",
+      "model": "amazon.titan-embed-text-v2:0",
+      "query_embedding_ms": 659,
+      "top_1_source_match": true,
+      "top_3_source_match": true,
+      "top_6_source_match": true,
+      "sources": [
+        "irs-like-kind-real-property-only",
+        "irs-like-kind-real-estate-tips",
+        "irs-like-kind-real-property-only",
+        "irs-like-kind-real-estate-tips",
+        "irs-form-8824-instructions",
+        "irs-like-kind-real-estate-tips"
+      ],
+      "similarities": [
+        0.6565,
+        0.6425,
+        0.6225,
+        0.5807,
+        0.5572,
+        0.5215
+      ]
+    },
+    {
+      "id": "1031-personal-property",
+      "model": "cohere.embed-english-v3",
+      "query_embedding_ms": 613,
+      "top_1_source_match": true,
+      "top_3_source_match": true,
+      "top_6_source_match": true,
+      "sources": [
+        "irs-like-kind-real-property-only",
+        "irs-like-kind-real-property-only",
+        "irs-like-kind-real-estate-tips",
+        "irs-like-kind-real-estate-tips",
+        "irs-form-8824-instructions",
+        "irs-form-8824-instructions"
+      ],
+      "similarities": [
+        0.6952,
+        0.6925,
+        0.6319,
+        0.6101,
+        0.5641,
+        0.5554
+      ]
+    },
+    {
+      "id": "1031-qi",
+      "model": "amazon.titan-embed-text-v2:0",
+      "query_embedding_ms": 500,
+      "top_1_source_match": true,
+      "top_3_source_match": true,
+      "top_6_source_match": true,
+      "sources": [
+        "cfr-26-1-1031k-1",
+        "cfr-26-1-1031k-1",
+        "irs-form-8824-instructions",
+        "irs-form-8824-instructions",
+        "irs-rev-rul-2004-86",
+        "cfr-26-1-1031k-1"
+      ],
+      "similarities": [
+        0.6853,
+        0.6819,
+        0.641,
+        0.5838,
+        0.5532,
+        0.5505
+      ]
+    },
+    {
+      "id": "1031-qi",
+      "model": "cohere.embed-english-v3",
+      "query_embedding_ms": 667,
+      "top_1_source_match": true,
+      "top_3_source_match": true,
+      "top_6_source_match": true,
+      "sources": [
+        "cfr-26-1-1031k-1",
+        "cfr-26-1-1031k-1",
+        "irs-like-kind-real-property-only",
+        "irs-form-8824-instructions",
+        "irs-rev-rul-2004-86",
+        "cfr-26-1-1031k-1"
+      ],
+      "similarities": [
+        0.6395,
+        0.6322,
+        0.581,
+        0.5807,
+        0.5646,
+        0.5617
+      ]
+    },
+    {
+      "id": "1031-boot",
+      "model": "amazon.titan-embed-text-v2:0",
+      "query_embedding_ms": 803,
+      "top_1_source_match": true,
+      "top_3_source_match": true,
+      "top_6_source_match": true,
+      "sources": [
+        "irs-like-kind-real-estate-tips",
+        "irs-form-8824-instructions",
+        "irs-like-kind-real-property-only",
+        "irs-like-kind-real-estate-tips",
+        "irs-like-kind-real-estate-tips",
+        "irs-like-kind-real-property-only"
+      ],
+      "similarities": [
+        0.7832,
+        0.7511,
+        0.7018,
+        0.6819,
+        0.6692,
+        0.6593
+      ]
+    },
+    {
+      "id": "1031-boot",
+      "model": "cohere.embed-english-v3",
+      "query_embedding_ms": 616,
+      "top_1_source_match": true,
+      "top_3_source_match": true,
+      "top_6_source_match": true,
+      "sources": [
+        "irs-form-8824-instructions",
+        "irs-like-kind-real-estate-tips",
+        "irs-form-8824-instructions",
+        "irs-form-8824-instructions",
+        "irs-like-kind-real-property-only",
+        "cfr-26-1-1031k-1"
+      ],
+      "similarities": [
+        0.7425,
+        0.7046,
+        0.6634,
+        0.6284,
+        0.6188,
+        0.6117
+      ]
+    },
+    {
+      "id": "dst-what",
+      "model": "amazon.titan-embed-text-v2:0",
+      "query_embedding_ms": 549,
+      "top_1_source_match": true,
+      "top_3_source_match": true,
+      "top_6_source_match": true,
+      "sources": [
+        "irs-rev-rul-2004-86",
+        "irs-rev-rul-2004-86",
+        "irs-rev-rul-2004-86",
+        "irs-rev-rul-2004-86",
+        "irs-rev-rul-2004-86",
+        "irs-rev-rul-2004-86"
+      ],
+      "similarities": [
+        0.8389,
+        0.8038,
+        0.7934,
+        0.7885,
+        0.7343,
+        0.7322
+      ]
+    },
+    {
+      "id": "dst-what",
+      "model": "cohere.embed-english-v3",
+      "query_embedding_ms": 651,
+      "top_1_source_match": true,
+      "top_3_source_match": true,
+      "top_6_source_match": true,
+      "sources": [
+        "irs-rev-rul-2004-86",
+        "irs-rev-rul-2004-86",
+        "irs-rev-rul-2004-86",
+        "irs-rev-rul-2004-86",
+        "irs-rev-rul-2004-86",
+        "irs-rev-rul-2004-86"
+      ],
+      "similarities": [
+        0.8011,
+        0.7388,
+        0.729,
+        0.6481,
+        0.6399,
+        0.5985
+      ]
+    },
+    {
+      "id": "dst-replacement",
+      "model": "amazon.titan-embed-text-v2:0",
+      "query_embedding_ms": 434,
+      "top_1_source_match": true,
+      "top_3_source_match": true,
+      "top_6_source_match": true,
+      "sources": [
+        "irs-rev-rul-2004-86",
+        "kiplinger-dst-risks",
+        "irs-rev-rul-2004-86",
+        "irs-rev-rul-2004-86",
+        "kiplinger-dst-risks",
+        "kiplinger-dst-risks"
+      ],
+      "similarities": [
+        0.682,
+        0.6696,
+        0.6537,
+        0.6479,
+        0.6452,
+        0.6334
+      ]
+    },
+    {
+      "id": "dst-replacement",
+      "model": "cohere.embed-english-v3",
+      "query_embedding_ms": 675,
+      "top_1_source_match": true,
+      "top_3_source_match": true,
+      "top_6_source_match": true,
+      "sources": [
+        "kiplinger-dst-risks",
+        "irs-rev-rul-2004-86",
+        "finra-regulatory-notice-05-18",
+        "irs-form-8824-instructions",
+        "irs-rev-rul-2004-86",
+        "finra-regulatory-notice-05-18"
+      ],
+      "similarities": [
+        0.6918,
+        0.6195,
+        0.6106,
+        0.6019,
+        0.6006,
+        0.5991
+      ]
+    },
+    {
+      "id": "dst-trustee-limits",
+      "model": "amazon.titan-embed-text-v2:0",
+      "query_embedding_ms": 591,
+      "top_1_source_match": true,
+      "top_3_source_match": true,
+      "top_6_source_match": true,
+      "sources": [
+        "irs-rev-rul-2004-86",
+        "irs-rev-rul-2004-86",
+        "irs-rev-rul-2004-86",
+        "irs-rev-rul-2004-86",
+        "irs-rev-rul-2004-86",
+        "irs-rev-rul-2004-86"
+      ],
+      "similarities": [
+        0.6898,
+        0.6646,
+        0.6433,
+        0.6426,
+        0.6347,
+        0.6323
+      ]
+    },
+    {
+      "id": "dst-trustee-limits",
+      "model": "cohere.embed-english-v3",
+      "query_embedding_ms": 591,
+      "top_1_source_match": true,
+      "top_3_source_match": true,
+      "top_6_source_match": true,
+      "sources": [
+        "irs-rev-rul-2004-86",
+        "irs-rev-rul-2004-86",
+        "irs-rev-rul-2004-86",
+        "irs-rev-rul-2004-86",
+        "irs-rev-rul-2004-86",
+        "irs-rev-rul-2004-86"
+      ],
+      "similarities": [
+        0.7006,
+        0.6492,
+        0.6255,
+        0.6151,
+        0.6015,
+        0.5908
+      ]
+    },
+    {
+      "id": "dst-considerations",
+      "model": "amazon.titan-embed-text-v2:0",
+      "query_embedding_ms": 628,
+      "top_1_source_match": true,
+      "top_3_source_match": true,
+      "top_6_source_match": true,
+      "sources": [
+        "kiplinger-dst-risks",
+        "kiplinger-dst-risks",
+        "kiplinger-dst-risks",
+        "kiplinger-dst-risks",
+        "kiplinger-dst-risks",
+        "kiplinger-dst-risks"
+      ],
+      "similarities": [
+        0.7897,
+        0.7785,
+        0.7476,
+        0.7264,
+        0.7196,
+        0.714
+      ]
+    },
+    {
+      "id": "dst-considerations",
+      "model": "cohere.embed-english-v3",
+      "query_embedding_ms": 552,
+      "top_1_source_match": true,
+      "top_3_source_match": true,
+      "top_6_source_match": true,
+      "sources": [
+        "irs-rev-rul-2004-86",
+        "irs-rev-rul-2004-86",
+        "irs-rev-rul-2004-86",
+        "irs-rev-rul-2004-86",
+        "kiplinger-dst-risks",
+        "irs-rev-rul-2004-86"
+      ],
+      "similarities": [
+        0.7338,
+        0.6805,
+        0.6655,
+        0.6491,
+        0.6463,
+        0.6038
+      ]
+    },
+    {
+      "id": "721-what",
+      "model": "amazon.titan-embed-text-v2:0",
+      "query_embedding_ms": 627,
+      "top_1_source_match": true,
+      "top_3_source_match": true,
+      "top_6_source_match": true,
+      "sources": [
+        "franklin-templeton-721-upreit",
+        "franklin-templeton-721-upreit",
+        "franklin-templeton-721-upreit",
+        "franklin-templeton-721-upreit",
+        "franklin-templeton-721-upreit",
+        "franklin-templeton-721-upreit"
+      ],
+      "similarities": [
+        0.7748,
+        0.5885,
+        0.5513,
+        0.5062,
+        0.4799,
+        0.331
+      ]
+    },
+    {
+      "id": "721-what",
+      "model": "cohere.embed-english-v3",
+      "query_embedding_ms": 612,
+      "top_1_source_match": true,
+      "top_3_source_match": true,
+      "top_6_source_match": true,
+      "sources": [
+        "franklin-templeton-721-upreit",
+        "franklin-templeton-721-upreit",
+        "usc-26-1031",
+        "irs-rev-rul-2004-86",
+        "irs-rev-rul-2004-86",
+        "irs-rev-rul-2004-86"
+      ],
+      "similarities": [
+        0.6779,
+        0.5505,
+        0.4328,
+        0.4231,
+        0.415,
+        0.4141
+      ]
+    },
+    {
+      "id": "721-vs-1031",
+      "model": "amazon.titan-embed-text-v2:0",
+      "query_embedding_ms": 557,
+      "top_1_source_match": true,
+      "top_3_source_match": true,
+      "top_6_source_match": true,
+      "sources": [
+        "franklin-templeton-721-upreit",
+        "franklin-templeton-721-upreit",
+        "irs-form-8824-instructions",
+        "irs-like-kind-real-estate-tips",
+        "franklin-templeton-721-upreit",
+        "franklin-templeton-721-upreit"
+      ],
+      "similarities": [
+        0.667,
+        0.5855,
+        0.56,
+        0.5513,
+        0.5145,
+        0.5025
+      ]
+    },
+    {
+      "id": "721-vs-1031",
+      "model": "cohere.embed-english-v3",
+      "query_embedding_ms": 602,
+      "top_1_source_match": true,
+      "top_3_source_match": true,
+      "top_6_source_match": true,
+      "sources": [
+        "franklin-templeton-721-upreit",
+        "irs-form-8824-instructions",
+        "franklin-templeton-721-upreit",
+        "finra-regulatory-notice-05-18",
+        "irs-like-kind-real-estate-tips",
+        "irs-form-8824-instructions"
+      ],
+      "similarities": [
+        0.6771,
+        0.573,
+        0.5728,
+        0.5483,
+        0.5454,
+        0.527
+      ]
+    },
+    {
+      "id": "721-op-units",
+      "model": "amazon.titan-embed-text-v2:0",
+      "query_embedding_ms": 555,
+      "top_1_source_match": true,
+      "top_3_source_match": true,
+      "top_6_source_match": true,
+      "sources": [
+        "usc-26-721",
+        "cfr-26-1-1031k-1",
+        "cfr-26-1-1031k-1",
+        "franklin-templeton-721-upreit",
+        "cfr-26-1-1031k-1",
+        "cfr-26-1-1031k-1"
+      ],
+      "similarities": [
+        0.5495,
+        0.4826,
+        0.4783,
+        0.4696,
+        0.4605,
+        0.4553
+      ]
+    },
+    {
+      "id": "721-op-units",
+      "model": "cohere.embed-english-v3",
+      "query_embedding_ms": 604,
+      "top_1_source_match": true,
+      "top_3_source_match": true,
+      "top_6_source_match": true,
+      "sources": [
+        "franklin-templeton-721-upreit",
+        "franklin-templeton-721-upreit",
+        "franklin-templeton-721-upreit",
+        "cfr-26-1-1031k-1",
+        "usc-26-721",
+        "cfr-26-1-1031k-1"
+      ],
+      "similarities": [
+        0.6852,
+        0.5737,
+        0.5673,
+        0.5357,
+        0.5316,
+        0.5256
+      ]
+    },
+    {
+      "id": "reit-what",
+      "model": "amazon.titan-embed-text-v2:0",
+      "query_embedding_ms": 631,
+      "top_1_source_match": true,
+      "top_3_source_match": true,
+      "top_6_source_match": true,
+      "sources": [
+        "investor-gov-reits",
+        "investor-gov-reits",
+        "investor-gov-reits",
+        "investor-gov-reits",
+        "investor-gov-reits",
+        "investor-gov-reits"
+      ],
+      "similarities": [
+        0.6845,
+        0.5809,
+        0.5033,
+        0.4809,
+        0.4751,
+        0.3962
+      ]
+    },
+    {
+      "id": "reit-what",
+      "model": "cohere.embed-english-v3",
+      "query_embedding_ms": 523,
+      "top_1_source_match": true,
+      "top_3_source_match": true,
+      "top_6_source_match": true,
+      "sources": [
+        "investor-gov-reits",
+        "franklin-templeton-721-upreit",
+        "investor-gov-reits",
+        "investor-gov-reits",
+        "finra-regulatory-notice-05-18",
+        "franklin-templeton-721-upreit"
+      ],
+      "similarities": [
+        0.7336,
+        0.6133,
+        0.5814,
+        0.5636,
+        0.5606,
+        0.5477
+      ]
+    },
+    {
+      "id": "accredited",
+      "model": "amazon.titan-embed-text-v2:0",
+      "query_embedding_ms": 641,
+      "top_1_source_match": true,
+      "top_3_source_match": true,
+      "top_6_source_match": true,
+      "sources": [
+        "investor-gov-accredited-investors",
+        "investor-gov-reg-d-private-placements",
+        "investor-gov-reg-d-private-placements",
+        "investor-gov-reg-d-private-placements",
+        "investor-gov-reg-d-private-placements",
+        "cfr-26-1-1031k-1"
+      ],
+      "similarities": [
+        0.7924,
+        0.4155,
+        0.3667,
+        0.35,
+        0.3143,
+        0.3033
+      ]
+    },
+    {
+      "id": "accredited",
+      "model": "cohere.embed-english-v3",
+      "query_embedding_ms": 594,
+      "top_1_source_match": true,
+      "top_3_source_match": true,
+      "top_6_source_match": true,
+      "sources": [
+        "investor-gov-accredited-investors",
+        "investor-gov-reg-d-private-placements",
+        "investor-gov-reg-d-private-placements",
+        "investor-gov-reg-d-private-placements",
+        "investor-gov-reg-d-private-placements",
+        "investor-gov-reg-d-private-placements"
+      ],
+      "similarities": [
+        0.6625,
+        0.648,
+        0.5749,
+        0.5527,
+        0.5333,
+        0.5064
+      ]
+    }
+  ]
+}

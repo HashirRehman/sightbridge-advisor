@@ -2,8 +2,10 @@ locals {
   account_id = data.aws_caller_identity.current.account_id
   partition  = data.aws_partition.current.partition
   # "us.amazon.nova-lite-v1:0" (cross-Region profile) → "amazon.nova-lite-v1:0" (base model)
-  chat_base_model = replace(var.chat_model_id, "/^(us|eu|apac|global)\\./", "")
-  is_profile      = local.chat_base_model != var.chat_model_id
+  chat_base_model     = replace(var.chat_model_id, "/^(us|eu|apac|global)\\./", "")
+  is_profile          = local.chat_base_model != var.chat_model_id
+  fallback_base_model = replace(var.fallback_chat_model_id, "/^(us|eu|apac|global)\\./", "")
+  fallback_is_profile = local.fallback_base_model != var.fallback_chat_model_id
 }
 
 # --- Logs (short retention keeps CloudWatch inside the free allowance) ---
@@ -73,8 +75,9 @@ data "aws_iam_policy_document" "api" {
       ],
       local.is_profile ? ["arn:${local.partition}:bedrock:${var.region}:${local.account_id}:inference-profile/${var.chat_model_id}"] : [],
       var.fallback_chat_model_id == "" ? [] : [
-        "arn:${local.partition}:bedrock:${var.region}::foundation-model/${var.fallback_chat_model_id}",
+        "arn:${local.partition}:bedrock:${split("-", var.region)[0]}-*::foundation-model/${local.fallback_base_model}",
       ],
+      local.fallback_is_profile ? ["arn:${local.partition}:bedrock:${var.region}:${local.account_id}:inference-profile/${var.fallback_chat_model_id}"] : [],
     )
   }
 }
@@ -134,6 +137,7 @@ resource "aws_lambda_function" "api" {
       BEDROCK_FALLBACK_CHAT_MODEL_ID = var.fallback_chat_model_id
       BEDROCK_EMBEDDING_MODEL_ID     = var.embedding_model_id
       BEDROCK_API_KEY_SSM_PARAMETER  = var.bedrock_api_key_ssm_parameter
+      GENERATION_TIMEOUT_SECONDS     = tostring(var.generation_timeout_seconds)
       RETRIEVAL_MIN_SIMILARITY       = tostring(var.retrieval_min_similarity)
       AUTH_PROVIDER                  = "cognito"
       COGNITO_REGION                 = var.region

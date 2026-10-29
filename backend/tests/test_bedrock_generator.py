@@ -88,6 +88,23 @@ def test_bedrock_client_error_becomes_generation_error() -> None:
         _generate(FakeConverseClient(error=throttled))
 
 
+def test_deepseek_tool_requires_the_direct_answer_field() -> None:
+    client = FakeConverseClient({"answerable": False})
+    generator = BedrockAnswerGenerator(client, "deepseek.v3.2", 900, "ap-southeast-2")
+    result = generator.generate("What is a DST?", [], GenerationMode.STANDARD)
+    schema = client.requests[0]["toolConfig"]["tools"][0]["toolSpec"]["inputSchema"]["json"]
+    assert set(schema["required"]) == {"answerable", "explanation", "key_considerations"}
+    assert result.draft.answerable is False
+    assert result.draft.explanation == []
+
+
+def test_deepseek_dictionary_output_is_still_validated() -> None:
+    client = FakeConverseClient({"explanation": "invalid"})
+    generator = BedrockAnswerGenerator(client, "deepseek.v3.2", 900, "ap-southeast-2")
+    with pytest.raises(GenerationError, match="malformed structured output"):
+        generator.generate("What is a DST?", [], GenerationMode.STANDARD)
+
+
 def test_schema_violating_output_becomes_generation_error() -> None:
     with pytest.raises(GenerationError, match="malformed"):
         _generate(FakeConverseClient({"answerable": "maybe", "explanation": "not a list"}))

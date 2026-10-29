@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, ChevronLeft, ChevronRight, ExternalLink, Lock, Search } from "lucide-react";
+import { AlertCircle, ArrowUpRight, ChevronLeft, ChevronRight, ExternalLink, Lock, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { AppHeader } from "@/components/app-header";
@@ -222,9 +222,12 @@ export function AuditView() {
                             <button
                               type="button"
                               onClick={() => setSelected(item)}
-                              className="line-clamp-2 text-left text-sm font-medium underline-offset-4 hover:underline"
+                              title="View exchange details"
+                              aria-haspopup="dialog"
+                              className="group inline-flex cursor-pointer items-start gap-2 rounded-sm text-left text-sm font-medium underline decoration-border underline-offset-4 hover:decoration-foreground"
                             >
-                              {item.question}
+                              <span className="line-clamp-2">{item.question}</span>
+                              <ArrowUpRight className="text-muted-foreground mt-0.5 size-4 shrink-0 group-hover:text-foreground" aria-hidden />
                             </button>
                           </TableCell>
                           <TableCell>

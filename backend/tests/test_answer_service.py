@@ -101,6 +101,19 @@ def test_grounded_answer_has_verified_citations_and_disclaimer() -> None:
     assert "[1]" in answer.render_text()
 
 
+def test_capabilities_question_is_answered_without_retrieval_or_generation() -> None:
+    embedder, generator = FakeEmbedder(fail=True), FakeGenerator(GenerationError("unavailable"))
+    answer = _service(generator, embedder=embedder).answer(
+        "What kind of information you can give to me"
+    )
+    assert (answer.status, answer.reason) == (AnswerStatus.ANSWERED, AnswerReason.CAPABILITIES)
+    assert answer.notice and "1031" in answer.notice and "721" in answer.notice
+    assert "DST" in answer.notice and "For example:" in answer.notice
+    assert answer.citations == [] and answer.model_id is None
+    assert embedder.calls == 0 and generator.calls == []
+    assert answer.render_text().endswith(DISCLAIMER)
+
+
 @pytest.mark.parametrize(
     ("question", "reason"),
     [

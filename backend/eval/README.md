@@ -42,3 +42,14 @@ RETRIEVAL_MIN_SIMILARITY=0.30 GENERATION_TIMEOUT_SECONDS=20 EMBEDDING_PROVIDER=b
 Every report is written even when cases fail; any failed case returns exit code 1. Model
 responses can vary between runs even at temperature zero. Historical local stand-in reports
 remain unchanged: 22/24 at floor 0.20 and 18/24 at 0.30; those did not measure LLM quality.
+
+### Sydney embedding comparison
+
+Run `uv run python -m scripts.compare_embeddings` against the local Titan corpus with a
+Sydney Bedrock key configured. It embeds the same chunks with Cohere English v3 in memory,
+uses `search_document`/`search_query` input types and reports expected-document ranks without
+writing database vectors. Both models matched an expected source in their first result for
+14/14 answerable questions; median query times were about 0.61 seconds. This small existing
+set does not distinguish the models and does not measure passage entailment or answer quality.
+Models need independent similarity calibration before any rollout. The report is
+[here](results/sydney-embedding-comparison.json).

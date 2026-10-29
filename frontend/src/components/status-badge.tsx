@@ -10,6 +10,7 @@ const STYLES: Record<ExchangeStatus, { label: string; className: string }> = {
 };
 
 export const REASON_LABELS: Record<string, string> = {
+  capabilities: "About this assistant",
   personalized_advice: "Personalised advice declined",
   out_of_scope: "Outside supported topics",
   prompt_injection: "Instruction override attempt",

@@ -34,7 +34,15 @@ class BedrockAnswerGenerator:
             max_tokens=max_tokens,
             temperature=0.0,
         )
-        self._chain = llm.with_structured_output(AnswerDraft, include_raw=True)
+        if model_id.startswith("deepseek."):
+            # DeepSeek otherwise omits optional arrays and puts the entire direct answer
+            # in key_considerations. Require all fields in its tool schema, while keeping
+            # the shared parser tolerant of omitted empty arrays in negative responses.
+            schema = AnswerDraft.model_json_schema()
+            schema["required"] = ["answerable", "explanation", "key_considerations"]
+            self._chain = llm.with_structured_output(schema, include_raw=True)
+        else:
+            self._chain = llm.with_structured_output(AnswerDraft, include_raw=True)
 
     @property
     def model_id(self) -> str:
@@ -59,6 +67,11 @@ class BedrockAnswerGenerator:
         if not isinstance(result, dict):
             raise GenerationError("model returned malformed structured output")
         parsed = result.get("parsed")
+        if isinstance(parsed, dict):
+            try:
+                parsed = AnswerDraft.model_validate(parsed)
+            except ValidationError as exc:
+                raise GenerationError("model returned malformed structured output") from exc
         if not isinstance(parsed, AnswerDraft):
             error = result.get("parsing_error")
             logger.warning("model output failed schema validation", extra={"error": str(error)})

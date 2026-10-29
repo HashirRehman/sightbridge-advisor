@@ -30,7 +30,7 @@ export function ChatView() {
   const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
   const [error, setError] = useState<{ message: string; retry?: string } | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef<HTMLDivElement>(null);
   // The thread we just created locally — don't refetch it when the URL catches up.
   const localConversation = useRef<string | null>(null);
 
@@ -63,14 +63,15 @@ export function ChatView() {
   }, [conversationId]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    const messages = messagesRef.current;
+    messages?.scrollTo({ top: messages.scrollHeight, behavior: "smooth" });
   }, [exchanges.length, pendingQuestion]);
 
   async function ask(question: string) {
     setError(null);
     setPendingQuestion(question);
     try {
-      const exchange = await api.ask(question, conversationId ?? undefined);
+      const exchange = await api.ask(question, conversationId ?? localConversation.current ?? undefined);
       setExchanges((prev) => [...prev, exchange]);
       if (exchange.conversation_id !== conversationId) {
         localConversation.current = exchange.conversation_id;
@@ -103,7 +104,7 @@ export function ChatView() {
   const empty = exchanges.length === 0 && !pendingQuestion && !threadLoading;
 
   return (
-    <div className="flex h-dvh flex-col">
+    <div className="flex h-dvh min-h-0 flex-col overflow-hidden">
       <AppHeader
         leading={
           <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
@@ -121,13 +122,19 @@ export function ChatView() {
           </Sheet>
         }
       />
-      <div className="flex min-h-0 flex-1">
-        <aside className="bg-card hidden w-72 shrink-0 border-r p-4 lg:block" aria-label="Conversations">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <aside className="bg-card hidden min-h-0 w-72 shrink-0 overflow-hidden border-r p-4 lg:block" aria-label="Conversations">
           {history}
         </aside>
 
-        <main className="flex min-w-0 flex-1 flex-col">
-          <div className="min-h-0 flex-1 overflow-y-auto">
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          <div
+            ref={messagesRef}
+            role="region"
+            aria-label="Conversation messages"
+            tabIndex={0}
+            className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain"
+          >
             <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-8 sm:px-6">
               {empty && (
                 <section className="space-y-7 pt-2 sm:pt-8">
@@ -197,11 +204,10 @@ export function ChatView() {
                   </AlertDescription>
                 </Alert>
               )}
-              <div ref={bottomRef} />
             </div>
           </div>
 
-          <div className="bg-background/95 border-t px-4 py-3 backdrop-blur sm:px-6">
+          <div className="bg-background/95 shrink-0 border-t px-4 py-3 backdrop-blur sm:px-6">
             <div className="mx-auto w-full max-w-3xl">
               <Composer onSubmit={ask} pending={pendingQuestion !== null} />
             </div>

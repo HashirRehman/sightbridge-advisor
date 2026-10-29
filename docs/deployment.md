@@ -76,3 +76,29 @@ The budget is an alert, **not a spending cap**. Eligible usage consumes credits/
 resources such as RDS still have metered costs. Stop the stack when the demonstration is over.
 For teardown, review `terraform plan -destroy` before using `terraform destroy`. Nonempty S3
 buckets require an explicit retention or cleanup decision; the state bucket is retained.
+
+## Continuous deployment
+
+CI checks Python, TypeScript, browser behavior and Terraform on pull requests and main pushes.
+After a main push passes CI, `Deploy backend` checks out that exact commit, builds the arm64
+Lambda package, uploads it to an encrypted `releases/<commit>.zip` object, updates the API and
+checks health and unauthenticated access. Superseded commits are skipped. Amplify separately
+builds the frontend from main.
+
+Enable `enable_github_deployments` and configure `github_deployment_subjects` with the exact
+repository/main OIDC subject. Repositories using immutable GitHub subject claims must include
+the owner and repository IDs. Apply Terraform, then copy the public metadata from
+`terraform output -json github_deployment_variables` into GitHub Actions repository variables.
+The OIDC role can only write release objects and update/read this Lambda's code configuration;
+it cannot read runtime secrets, modify the database or apply infrastructure changes. AWS access
+keys and the Bedrock token are not GitHub secrets. Infrastructure and migrations remain operator
+Terraform/Alembic operations.
+
+For a rollback, revert the offending commit on main and let CI and CD deploy the tested revert.
+
+Current account limitation: creating the GitHub IAM OIDC provider is explicitly denied by an
+organization service control policy. The deployment workflow stays inactive while
+`AWS_DEPLOY_ROLE_ARN` is unset; the application still deploys through the operator's Terraform
+profile, and Amplify frontend deployment remains active. An account administrator must allow
+OIDC provider creation before backend CD can be enabled. No long-lived AWS credentials were
+added to GitHub as a workaround.

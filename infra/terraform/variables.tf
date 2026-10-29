@@ -50,12 +50,22 @@ variable "db_ingress_cidrs" {
 # --- Models ---
 variable "chat_model_id" {
   type    = string
-  default = "apac.amazon.nova-lite-v1:0"
+  default = "deepseek.v3.2"
 }
 
 variable "fallback_chat_model_id" {
   type    = string
-  default = "deepseek.v3.2"
+  default = "apac.amazon.nova-lite-v1:0"
+}
+
+variable "generation_timeout_seconds" {
+  description = "Primary model allowance within the shared 20-second answer budget."
+  type        = number
+  default     = 14
+  validation {
+    condition     = var.generation_timeout_seconds > 0 && var.generation_timeout_seconds < 20
+    error_message = "Leave time within the shared answer budget for retrieval and fallback."
+  }
 }
 
 variable "embedding_model_id" {

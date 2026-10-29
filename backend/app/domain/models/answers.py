@@ -18,6 +18,7 @@ class AnswerStatus(StrEnum):
 
 
 class AnswerReason(StrEnum):
+    CAPABILITIES = "capabilities"
     PERSONALIZED_ADVICE = "personalized_advice"
     OUT_OF_SCOPE = "out_of_scope"
     PROMPT_INJECTION = "prompt_injection"

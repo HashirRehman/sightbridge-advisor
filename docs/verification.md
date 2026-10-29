@@ -23,8 +23,8 @@ API health: https://uv91uglc6b.execute-api.ap-southeast-2.amazonaws.com/api/heal
 
 ## Local checks
 
-114 backend tests passed against PostgreSQL/pgvector. Ruff lint/format and strict mypy
-passed. Frontend lint, typecheck, production build and 16 desktop/mobile Playwright tests
+127 backend tests passed against PostgreSQL/pgvector. Ruff lint/format and strict mypy
+passed. Frontend lint, typecheck, production build and 20 desktop/mobile Playwright tests
 passed. Terraform formatting, validation and TFLint passed. The arm64 Lambda archive passed
 its integrity check and ran successfully in AWS.
 
@@ -43,3 +43,21 @@ calibration used the same small eval set; a held-out benchmark and human review 
 steps. Prior conversation turns are not used to answer follow-ups.
 
 Reviewer credentials are stored privately and are not part of this report or the repository.
+
+## Follow-up verification
+
+The capabilities question from review now returns `answered/capabilities` from the live API,
+with a fixed scope explanation and disclaimer, without retrieval or model usage. Policy
+precedence and persistence/audit behavior are covered by backend tests. Browser tests cover
+long-thread scrolling with the composer visible, dropdown placement on desktop/mobile, and
+icons on the audit question buttons.
+
+A Sydney-only retrieval comparison used all 284 chunks and the 14 answerable evaluation
+questions. Titan V2 and Cohere English v3 both retrieved an expected document at ranks 1, 3
+and 6 for all 14 questions. Median query embedding times were 609 ms and 612.5 ms respectively.
+This source-selection proxy does not establish equal answer quality or identify the best
+embedding model; it supplies no demonstrated reason to migrate the existing Titan corpus.
+No production embeddings changed. See `backend/eval/results/sydney-embedding-comparison.json`.
+
+Backend CI/CD is implemented but inactive because the account's organization policy denies
+IAM OIDC provider creation. Amplify frontend CD remains active. See the deployment guide.
