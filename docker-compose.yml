@@ -1,0 +1,21 @@
+# Local development only: PostgreSQL 16 with the pgvector extension.
+services:
+  db:
+    image: pgvector/pgvector:0.8.1-pg16
+    environment:
+      POSTGRES_USER: sightbridge
+      POSTGRES_PASSWORD: sightbridge
+      POSTGRES_DB: sightbridge
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backend/scripts/init-test-db.sql:/docker-entrypoint-initdb.d/10-test-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sightbridge -d sightbridge"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  pgdata:

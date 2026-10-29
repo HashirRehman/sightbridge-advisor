@@ -1,0 +1,65 @@
+[project]
+name = "sightbridge-backend"
+version = "0.1.0"
+description = "Sightbridge Advisor Intelligence API: grounded Q&A over a curated 1031/DST/721 corpus."
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.162,<0.163",
+    "uvicorn[standard]>=0.34",
+    "pydantic>=2.11,<3",
+    "pydantic-settings>=2.16,<3",
+    "sqlalchemy>=2.1,<2.2",
+    "alembic>=1.20,<2",
+    "psycopg[binary]>=3.3,<4",
+    "pgvector>=0.5,<0.6",
+    "pyjwt[crypto]>=2.15,<3",
+    "httpx>=0.28",
+    "boto3>=1.40",
+    "langchain-core>=1.7,<2",
+    "langchain-aws>=1.9,<2",
+    "langchain-text-splitters>=1.1,<2",
+    "pypdf>=6.21,<7",
+    "beautifulsoup4>=4.15,<5",
+    "mangum>=0.22,<0.23",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4",
+    "ruff>=0.14",
+    "mypy>=1.18",
+    "boto3-stubs[bedrock-runtime,s3]",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S", "SIM", "RUF"]
+ignore = ["S101"]
+
+[tool.ruff.lint.isort]
+known-third-party = ["alembic"]
+known-first-party = ["app"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S105", "S106"]
+"alembic/**" = ["E501", "F401", "UP035", "UP007"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+exclude = ["alembic/"]
+
+[[tool.mypy.overrides]]
+module = ["mangum.*", "pgvector.*", "langchain_aws.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["integration: requires PostgreSQL (DATABASE_URL)"]
