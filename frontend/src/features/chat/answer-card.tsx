@@ -54,7 +54,11 @@ export function AnswerCard({ exchange }: { exchange: Exchange }) {
         </div>
       )}
 
-      {exchange.notice && (
+      {exchange.notice && exchange.status === "answered" && (
+        <p className="text-[0.975rem] leading-7">{exchange.notice}</p>
+      )}
+
+      {exchange.notice && exchange.status !== "answered" && (
         <div className={cn("flex gap-3 rounded-lg border p-3.5 text-sm leading-relaxed", notice.className)}>
           <NoticeIcon className="mt-0.5 size-4 shrink-0" aria-hidden />
           <p>{exchange.notice}</p>

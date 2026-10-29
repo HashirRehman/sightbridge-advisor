@@ -31,9 +31,9 @@ class Settings(BaseSettings):
     bedrock_api_key_ssm_parameter: str = ""
     # "local" = extractive stand-in for dev without AWS; refused in production.
     llm_provider: Literal["bedrock", "local"] = "bedrock"
-    # Primary: Amazon Nova Lite. Fallback (on errors only): DeepSeek V3.2. Empty disables it.
-    bedrock_chat_model_id: str = "apac.amazon.nova-lite-v1:0"
-    bedrock_fallback_chat_model_id: str = "deepseek.v3.2"
+    # Primary: DeepSeek V3.2. Fallback (on errors only): Nova Lite. Empty disables it.
+    bedrock_chat_model_id: str = "deepseek.v3.2"
+    bedrock_fallback_chat_model_id: str = "apac.amazon.nova-lite-v1:0"
     # "local" = deterministic lexical embedder for dev/tests without AWS; refused in production.
     embedding_provider: Literal["bedrock", "local"] = "bedrock"
     bedrock_embedding_model_id: str = "amazon.titan-embed-text-v2:0"
@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     bedrock_timeout_seconds: float = Field(default=20.0, gt=0)
     bedrock_max_retries: int = Field(default=0, ge=0, le=3)
     embedding_timeout_seconds: float = Field(default=4.0, gt=0)
-    generation_timeout_seconds: float = Field(default=8.0, gt=0)
+    generation_timeout_seconds: float = Field(default=14.0, gt=0)
     answer_timeout_seconds: float = Field(default=20.0, gt=0, le=20)
     max_output_tokens: int = 900
 

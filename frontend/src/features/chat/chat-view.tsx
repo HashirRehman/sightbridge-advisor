@@ -64,8 +64,19 @@ export function ChatView() {
 
   useEffect(() => {
     const messages = messagesRef.current;
-    messages?.scrollTo({ top: messages.scrollHeight, behavior: "smooth" });
-  }, [exchanges.length, pendingQuestion]);
+    if (!messages) return;
+    const exchanges = messages.querySelectorAll<HTMLElement>("[data-exchange]");
+    const latest = error
+      ? messages.querySelector<HTMLElement>("[data-chat-error]")
+      : pendingQuestion
+        ? messages.querySelector<HTMLElement>("[data-pending-question]")
+        : exchanges.item(exchanges.length - 1);
+    // Keep the new question and explanation in view, even when its sources are long.
+    messages.scrollTo({
+      top: latest ? Math.max(0, latest.offsetTop - 24) : 0,
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth",
+    });
+  }, [exchanges.length, pendingQuestion, error]);
 
   async function ask(question: string) {
     setError(null);
@@ -167,14 +178,14 @@ export function ChatView() {
               )}
 
               {exchanges.map((exchange) => (
-                <div key={exchange.id} className="space-y-3">
+                <div key={exchange.id} data-exchange className="space-y-3">
                   <UserQuestion text={exchange.question} />
                   <AnswerCard exchange={exchange} />
                 </div>
               ))}
 
               {pendingQuestion && (
-                <div className="space-y-3">
+                <div data-pending-question className="space-y-3">
                   <UserQuestion text={pendingQuestion} />
                   <div className="bg-card space-y-3 rounded-xl border p-5" role="status" aria-live="polite">
                     <p className="text-muted-foreground text-sm">
@@ -188,7 +199,7 @@ export function ChatView() {
               )}
 
               {error && (
-                <Alert variant="destructive" role="alert">
+                <Alert data-chat-error variant="destructive" role="alert">
                   <AlertCircle aria-hidden />
                   <AlertDescription className="flex flex-wrap items-center gap-3">
                     <span>{error.message}</span>

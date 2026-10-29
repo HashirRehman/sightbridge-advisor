@@ -27,12 +27,17 @@ logger = logging.getLogger(__name__)
 MAX_CONTEXT_CHARS = 9000
 
 NOTICE_CAPABILITIES = (
-    "I can help you understand 1031 exchanges, Delaware Statutory Trusts (DSTs), and 721 "
-    "exchanges into REIT operating partnerships. Ask about how they work, deadlines, general "
-    'requirements, risks, or how they compare. For example: "How does a 1031 exchange work?" '
-    'or "How is a 721 exchange different?" My educational answers use approved public '
-    "sources and link to the supporting passages. I can't recommend investments or give "
-    "personalized tax, legal, or investment advice."
+    "I can help you understand 1031 exchanges, Delaware Statutory Trusts (DSTs), and "
+    "721/UPREIT exchanges in plain language. Ask me how they work, what deadlines apply, "
+    "what risks to understand, or how they compare. "
+    'For example: "How does a 1031 exchange work?" '
+    "I'll explain the key points here and include sources you can check."
+)
+NOTICE_ROLE = (
+    "My job is to help you understand 1031 exchanges, Delaware Statutory Trusts (DSTs), "
+    "and 721/UPREIT exchanges. I explain how they work, their key rules and risks, and how "
+    "they compare, using the approved source documents. You can read the explanation "
+    "here and use the citations to check the details."
 )
 
 NOTICE_PERSONALIZED = (
@@ -99,7 +104,9 @@ class AnswerService:
             return AssistantAnswer(
                 status=AnswerStatus.ANSWERED,
                 reason=AnswerReason.CAPABILITIES,
-                notice=NOTICE_CAPABILITIES,
+                notice=NOTICE_ROLE
+                if decision.matched_rule == "assistant_role"
+                else NOTICE_CAPABILITIES,
             )
 
         personalized = decision.outcome is PolicyOutcome.PERSONALIZED_ADVICE

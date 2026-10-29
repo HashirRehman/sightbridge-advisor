@@ -150,7 +150,12 @@ def test_client_cannot_assert_identity_or_role(client: TestClient) -> None:
     assert client.get("/api/me", headers=auth(ADVISOR_A)).json()["is_admin"] is False
 
 
-def test_capabilities_answer_is_saved_and_audited_without_a_model(client: TestClient) -> None:
+@pytest.mark.parametrize(
+    "question", ["What kind of information you can give to me", "What is your job"]
+)
+def test_capabilities_answer_is_saved_and_audited_without_a_model(
+    client: TestClient, question: str
+) -> None:
     from app.application.rag.service import AnswerService
     from tests.test_answer_service import FakeEmbedder, FakeGenerator, FakeRetriever
 
@@ -158,11 +163,16 @@ def test_capabilities_answer_is_saved_and_audited_without_a_model(client: TestCl
     generator = FakeGenerator(RuntimeError("must not be called"))
     answers = AnswerService(embedder, FakeRetriever([]), generator, top_k=6, min_similarity=0.4)
     client.app.dependency_overrides[get_answer_service] = lambda: answers  # type: ignore[attr-defined]
-    response = _ask(client, ADVISOR_A, "What kind of information you can give to me")
+    response = _ask(client, ADVISOR_A, question)
     assert response.status_code == 200
     body = response.json()
     assert (body["status"], body["reason"]) == ("answered", "capabilities")
-    assert "1031" in body["notice"] and "For example:" in body["notice"]
+    assert "1031" in body["notice"]
+    assert (
+        "My job is" in body["notice"]
+        if question == "What is your job"
+        else "For example:" in body["notice"]
+    )
     assert body["citations"] == [] and body["disclaimer"] == DISCLAIMER
     assert embedder.calls == 0 and generator.calls == []
     audit = client.get("/api/admin/exchanges", headers=auth(ADMIN)).json()["items"]

@@ -17,7 +17,7 @@ export function AppHeader({ leading }: { leading?: React.ReactNode }) {
 
   const links = [
     { href: "/", label: "Assistant" },
-    ...(me?.is_admin ? [{ href: "/admin", label: "Audit log" }] : []),
+    ...(me?.is_admin ? [{ href: "/admin", label: "Admin dashboard" }] : []),
   ];
 
   async function signOut() {
@@ -27,14 +27,24 @@ export function AppHeader({ leading }: { leading?: React.ReactNode }) {
   }
 
   return (
-    <header className="bg-card sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b px-4 sm:px-6">
+    <header className="bg-card sticky top-0 z-30 flex min-h-14 shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b px-4 py-2 sm:px-6">
       {leading}
-      <Link href="/" className="rounded-sm" aria-label="Sightbridge Advisor Intelligence home">
+      <Link
+        href="/"
+        className="rounded-sm"
+        aria-label="Sightbridge Advisor Intelligence home"
+      >
         <Wordmark className="[&>span:last-child]:hidden sm:[&>span:last-child]:inline" />
       </Link>
-      <nav aria-label="Main" className="ml-2 flex items-center gap-1 sm:ml-6">
+      <nav
+        aria-label="Main"
+        className="order-last flex w-full items-center gap-1 sm:order-none sm:ml-6 sm:w-auto"
+      >
         {links.map((link) => {
-          const active = link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
+          const active =
+            link.href === "/"
+              ? pathname === "/"
+              : pathname.startsWith(link.href);
           return (
             <Link
               key={link.href}
@@ -63,7 +73,12 @@ export function AppHeader({ leading }: { leading?: React.ReactNode }) {
             )}
           </span>
         )}
-        <Button variant="ghost" size="sm" onClick={signOut} disabled={signingOut}>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={signOut}
+          disabled={signingOut}
+        >
           <LogOut aria-hidden />
           <span className="hidden sm:inline">Sign out</span>
           <span className="sr-only sm:hidden">Sign out</span>

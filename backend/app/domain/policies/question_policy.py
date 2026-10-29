@@ -80,13 +80,25 @@ _OUT_OF_SCOPE = re.compile(
 )
 
 # Match complete requests for application help, not questions about arbitrary subjects.
+_ASSISTANT_ROLE = re.compile(
+    r"(?:what(?: is|'s) your (?:job|role|purpose|function|specialty|speciality)|"
+    r"what (?:is your job|are you here|are you designed|were you built) to do|"
+    r"who are you|what (?:do you actually do|is this assistant for|are you)|"
+    r"(?:describe|explain|tell me about) your (?:job|role|purpose)|"
+    r"(?:can|could) you (?:tell me|explain) what your (?:job|role|purpose) is)"
+    r"(?: here| in this app| as an assistant)?(?:[.!?]+)?",
+    re.IGNORECASE,
+)
+
 _CAPABILITIES = re.compile(
-    r"(?:what (?:can you do|do you do|is your purpose|are your capabilities|can i ask you)|"
+    r"(?:what (?:can you do(?: for me)?|do you do|is your purpose|are your capabilities|can i ask you)|"
     r"who are you|how can you help(?: me)?|what can you help(?: me)? with|"
     r"what (?:topics|questions) (?:can|do) you (?:cover|answer|help with)|"
     r"what (?:kind of |types? of )?information (?:can you|you can|do you) "
     r"(?:give|provide|offer|share)(?: to)?(?: me)?|"
-    r"tell me (?:about yourself|what you can do)|help)(?:[.!?]+)?",
+    r"tell me (?:about yourself|what you can do)|"
+    r"what (?:are you able to do|do you help with)|"
+    r"how (?:do|could|would) you help(?: me)?|help|hello|hi|hey)(?:[.!?]+)?",
     re.IGNORECASE,
 )
 
@@ -113,7 +125,15 @@ def evaluate_question(question: str) -> PolicyDecision:
         return PolicyDecision(PolicyOutcome.PERSONALIZED_ADVICE, in_scope, rule)
     if not in_scope and (m := _OUT_OF_SCOPE.search(question)):
         return PolicyDecision(PolicyOutcome.OUT_OF_SCOPE, in_scope, m.group(0).lower())
-    if _CAPABILITIES.fullmatch(question.strip()):
+    # Normalise conversational wrappers only for self-description matching. Safety and
+    # topical checks above always inspect the complete original question.
+    help_question = " ".join(question.replace("\u2019", "'").split())
+    help_question = re.sub(
+        r"^(?:(?:hi|hello|hey)[,!]?\s+)?(?:please\s+)?", "", help_question, flags=re.I
+    )
+    if _ASSISTANT_ROLE.fullmatch(help_question):
+        return PolicyDecision(PolicyOutcome.CAPABILITIES, in_scope, "assistant_role")
+    if _CAPABILITIES.fullmatch(help_question):
         return PolicyDecision(PolicyOutcome.CAPABILITIES, in_scope, "assistant_capabilities")
     # Questions with no topical vocabulary are still allowed through: retrieval decides.
     return PolicyDecision(PolicyOutcome.ALLOW, in_scope)
