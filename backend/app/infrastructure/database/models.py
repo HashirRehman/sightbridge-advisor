@@ -6,10 +6,12 @@ Change a model, then generate a reviewed migration:
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     ARRAY,
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -20,6 +22,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.infrastructure.database.base import Base, TimestampMixin
@@ -106,4 +109,81 @@ class IngestionRun(Base):
     )
 
 
-__all__ = ["Base", "Document", "DocumentChunk", "IngestionRun"]
+class User(TimestampMixin, Base):
+    """Mirror of the Cognito identity, kept so the audit view can show who asked what."""
+
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)  # Cognito `sub`
+    email: Mapped[str] = mapped_column(Text, index=True)
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class Conversation(TimestampMixin, Base):
+    __tablename__ = "conversations"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    title: Mapped[str] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    exchanges: Mapped[list["Exchange"]] = relationship(
+        back_populates="conversation", order_by="Exchange.created_at"
+    )
+
+    __table_args__ = (Index("ix_conversations_user_updated", "user_id", "updated_at"),)
+
+
+class Exchange(TimestampMixin, Base):
+    """One question → answer turn. Doubles as the conversation history and the audit record,
+    so it is append-only (enforced by a database trigger in the migration)."""
+
+    __tablename__ = "exchanges"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("conversations.id", ondelete="RESTRICT")
+    )
+    # Denormalised from the conversation for ownership checks, filtering and rate limiting.
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    question: Mapped[str] = mapped_column(Text)
+    answer_text: Mapped[str] = mapped_column(Text)  # exactly what was shown, incl. disclaimer
+    answer_payload: Mapped[dict[str, Any]] = mapped_column(JSONB)  # structured, for the UI
+    sources: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)  # citation snapshot
+    status: Mapped[str] = mapped_column(String(20))
+    reason: Mapped[str | None] = mapped_column(String(50))
+    model_id: Mapped[str | None] = mapped_column(String(200))
+    input_tokens: Mapped[int | None] = mapped_column(Integer)
+    output_tokens: Mapped[int | None] = mapped_column(Integer)
+    latency_ms: Mapped[int] = mapped_column(Integer)
+    retrieved_passages: Mapped[int] = mapped_column(Integer, default=0)
+    dropped_claims: Mapped[int] = mapped_column(Integer, default=0)
+    request_id: Mapped[str | None] = mapped_column(String(64))
+
+    conversation: Mapped[Conversation] = relationship(back_populates="exchanges")
+    user: Mapped[User] = relationship()
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('answered', 'refused', 'unsupported', 'failed')", name="status"
+        ),
+        CheckConstraint("char_length(question) BETWEEN 1 AND 4000", name="question_length"),
+        Index("ix_exchanges_conversation_created", "conversation_id", "created_at"),
+        Index("ix_exchanges_user_created", "user_id", "created_at"),
+        Index("ix_exchanges_created", "created_at"),
+        Index("ix_exchanges_status", "status"),
+    )
+
+
+__all__ = [
+    "Base",
+    "Conversation",
+    "Document",
+    "DocumentChunk",
+    "Exchange",
+    "IngestionRun",
+    "User",
+]

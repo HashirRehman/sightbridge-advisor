@@ -8,7 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.routes import health
+from app.api.routes import admin, chat, health
 from app.core.config import get_settings
 from app.core.logging import configure_logging, request_id_var
 
@@ -76,6 +76,8 @@ def create_app() -> FastAPI:
         )
 
     app.include_router(health.router)
+    app.include_router(chat.router)
+    app.include_router(admin.router)
     return app
 
 

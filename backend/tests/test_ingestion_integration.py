@@ -62,6 +62,7 @@ class FakeFetcher:
 def session_factory(migrated_db: None) -> Iterator[sessionmaker[Session]]:
     factory = get_session_factory()
     with factory() as s:
+        s.execute(text("SET lock_timeout = '5s'"))
         s.execute(text("TRUNCATE documents, document_chunks, ingestion_runs CASCADE"))
         s.commit()
     yield factory

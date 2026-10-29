@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     bedrock_max_retries: int = 2
     max_output_tokens: int = 900
 
+    # "local" = HS256 tokens minted by the Next.js dev server; refused in production.
+    auth_provider: Literal["cognito", "local"] = "cognito"
+    local_auth_secret: SecretStr = SecretStr("")
     cognito_region: str = "us-east-1"
     cognito_user_pool_id: str = ""
     cognito_app_client_id: str = ""
@@ -55,6 +58,12 @@ class Settings(BaseSettings):
             self.embedding_provider != "bedrock" or self.llm_provider != "bedrock"
         ):
             raise ValueError("production must use Bedrock for embeddings and generation")
+        if self.environment == "production" and (
+            self.auth_provider != "cognito"
+            or not self.cognito_user_pool_id
+            or not self.cognito_app_client_id
+        ):
+            raise ValueError("production requires Cognito auth with pool and client IDs")
         return self
 
     @property

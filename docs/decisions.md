@@ -58,3 +58,21 @@ Short records of decisions that shaped the build. Format: decision, reason, alte
 ### D10. Model choice: Claude Haiku on Bedrock, temperature 0, max 900 output tokens
 - **Reason:** It is the cheapest current Claude tier with reliable tool-use structured output, a good fit for short, grounded explanations. The model ID is configuration (`BEDROCK_CHAT_MODEL_ID`) and is verified against the account's model access before deployment.
 - **Alternatives:** Amazon Nova Lite/Micro (cheaper, weaker at exact quoting), Sonnet (better but several times the cost).
+
+### D11. Authentication and authorisation
+- **Production:** Cognito **ID tokens** (they carry `email`, `aud` = app client, and `cognito:groups`), verified server-side on every request:
+  - RS256 only, pinned (this rejects `alg=none` and HS256 key-confusion; both are tested);
+  - issuer, audience, expiry (30s leeway) and `token_use=id` are all checked;
+  - signing keys come from JWKS, cached per Lambda instance.
+
+  Role = membership of the `admin` Cognito group. The request body schema forbids extra fields, so a client can't even send `user_id` or `is_admin`.
+- **Ownership:** it is part of every conversation query (`WHERE id = ? AND user_id = ?`). Another advisor's conversation returns 404, not 403, so its existence isn't revealed.
+- **Local:** `AUTH_PROVIDER=local` accepts HS256 tokens minted by the Next.js dev server with a shared secret of at least 32 characters. Production config rejects it, the same way it rejects local embeddings and the local LLM.
+
+### D12. One append-only `exchanges` table = history + audit log
+- **Reason:**
+  - Each turn is stored once: question, rendered answer text exactly as shown (with disclaimer), a structured payload for the UI, a citation snapshot (JSONB, so the audit stays accurate after re-ingestion), status/reason, model ID, tokens, latency and request ID.
+  - A Postgres trigger blocks UPDATE and DELETE.
+  - Everything that passes validation, authorisation and rate limiting is recorded, including unexpected crashes, which are logged as `failed`.
+- **Rate limiting:** a per-user count of recent exchanges (6/min, 60/hour). It is stateless, so it works across Lambda instances with no Redis. It isn't atomic under concurrent bursts, which is acceptable for a pilot.
+- **Alternatives:** separate `messages` + `audit_logs` tables (duplication, drift risk); an external rate limiter (more infrastructure).
