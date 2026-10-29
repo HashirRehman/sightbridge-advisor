@@ -81,7 +81,12 @@ def test_runtime_client_has_no_hidden_retries() -> None:
     client = build_bedrock_runtime_client(Settings(_env_file=None))
     assert client.meta.config.retries["total_max_attempts"] == 1
     assert client.meta.config.connect_timeout == 3
-    assert client.meta.config.read_timeout == 25
+    assert client.meta.config.read_timeout == 30
+
+
+def test_socket_timeout_never_cuts_off_the_generation_allowance() -> None:
+    settings = Settings(_env_file=None)
+    assert settings.bedrock_timeout_seconds >= settings.worker_generation_timeout_seconds
 
 
 def test_answer_budget_cannot_consume_the_entire_lambda_timeout() -> None:

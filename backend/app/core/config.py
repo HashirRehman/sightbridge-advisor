@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     embedding_provider: Literal["bedrock", "local"] = "bedrock"
     bedrock_embedding_model_id: str = "amazon.titan-embed-text-v2:0"
     embedding_dimensions: int = 1024
-    bedrock_timeout_seconds: float = Field(default=25.0, gt=0)
+    bedrock_timeout_seconds: float = Field(default=30.0, gt=0)
     bedrock_max_retries: int = Field(default=0, ge=0, le=3)
     embedding_timeout_seconds: float = Field(default=6.0, gt=0)
     generation_timeout_seconds: float = Field(default=14.0, gt=0)
@@ -47,8 +47,8 @@ class Settings(BaseSettings):
     # Independent claim/safety review; a malformed review escalates once to the chat model.
     review_model_id: str = "apac.amazon.nova-lite-v1:0"
     max_concurrent_answers: int = Field(default=4, ge=1, le=20)
-    worker_answer_timeout_seconds: float = Field(default=40.0, gt=0, le=45)
-    worker_generation_timeout_seconds: float = Field(default=25.0, gt=0, le=30)
+    worker_answer_timeout_seconds: float = Field(default=45.0, gt=0, le=45)
+    worker_generation_timeout_seconds: float = Field(default=28.0, gt=0, le=30)
 
     # "local" = HS256 tokens minted by the Next.js dev server; refused in production.
     auth_provider: Literal["cognito", "local"] = "cognito"

@@ -206,9 +206,13 @@ def _embedder(fake: FlakyEmbeddings) -> BedrockTitanEmbedder:
     return embedder
 
 
-def test_throttled_embedding_is_retried_once_but_other_errors_are_not() -> None:
-    fake = FlakyEmbeddings(ClientError({"Error": {"Code": "ThrottlingException"}}, "InvokeModel"))
-    assert _embedder(fake).embed_query("q") == [1.0] and fake.calls == 2
+def test_transient_embedding_failure_is_retried_once_but_other_errors_are_not() -> None:
+    for transient in (
+        ClientError({"Error": {"Code": "ThrottlingException"}}, "InvokeModel"),
+        TimeoutError("hung call"),
+    ):
+        fake = FlakyEmbeddings(transient)
+        assert _embedder(fake).embed_query("q") == [1.0] and fake.calls == 2
     denied = FlakyEmbeddings(ClientError({"Error": {"Code": "AccessDeniedException"}}, "Invoke"))
     with pytest.raises(ClientError):
         _embedder(denied).embed_query("q")

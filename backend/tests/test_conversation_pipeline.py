@@ -415,3 +415,27 @@ def test_each_subject_keeps_its_best_passage_before_extra_passages() -> None:
     pipeline.service.answer("Explain all three in easy words")
     selected = pipeline.generator.calls[0][1]
     assert {p.document_id for p in selected[:3]} == {"topic-1", "topic-2", "topic-3"}
+
+
+def test_no_retry_is_started_without_time_to_finish_it() -> None:
+    rejected = ResponseReview(
+        SafetyVerdict.ALLOW, failed_claim_indexes=(0,), issue="numbers_or_conditions"
+    )
+    pipeline = Pipeline(reviewer=Reviewer([rejected]))
+    pipeline.service._timeout_seconds = 5.0  # less than one more draft needs
+    answer = pipeline.service.answer("What is a 1031 exchange?")
+    assert answer.status is AnswerStatus.UNSUPPORTED  # an honest outcome, not an error
+    assert pipeline.calls() == (0, 1, 1, 1)
+
+
+def test_unsupported_first_draft_skips_refinement_when_time_is_short() -> None:
+    plan = ConversationPlan(
+        action="search",
+        search_queries=["1031 deadline extension"],
+        alternative_query="tax return due date and the exchange period",
+    )
+    pipeline = Pipeline(planner=Planner(plan), generator=Generator([draft(answerable=False)]))
+    pipeline.service._timeout_seconds = 5.0
+    answer = pipeline.service.answer("Does an extension change it?", history=HISTORY)
+    assert answer.reason is AnswerReason.MODEL_FOUND_INSUFFICIENT
+    assert pipeline.calls() == (1, 1, 1, 0)

@@ -5,8 +5,9 @@ from langchain_aws import BedrockEmbeddings
 
 from app.infrastructure.bedrock.invocation import invoke_bounded
 
-# Transient service-side refusals. One immediate retry costs ~0.2 s and a few tokens, far
-# less than failing the whole answer; anything else (auth, validation) fails at once.
+# Transient failures: throttling, service hiccups and a hung call. One immediate retry
+# costs ~0.2 s and a few tokens, far less than failing the whole answer; anything else
+# (auth, validation) fails at once.
 _RETRYABLE = frozenset({"ThrottlingException", "ServiceUnavailableException"})
 
 
@@ -34,7 +35,7 @@ class BedrockTitanEmbedder:
         try:
             return self._embed(text)
         except Exception as exc:
-            if _error_code(exc) not in _RETRYABLE:
+            if not isinstance(exc, TimeoutError) and _error_code(exc) not in _RETRYABLE:
                 raise
             return self._embed(text)
 

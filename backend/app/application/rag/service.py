@@ -17,7 +17,7 @@ from dataclasses import replace
 from difflib import SequenceMatcher
 
 from app.application.rag.activity import activity_step
-from app.application.rag.budget import answer_budget
+from app.application.rag.budget import answer_budget, remaining_seconds
 from app.application.rag.prompts import (
     OVERVIEW_NOTE,
     QUOTE_NOTE,
@@ -77,6 +77,8 @@ logger = logging.getLogger(__name__)
 MAX_CONTEXT_CHARS = 9000
 # A simplification this similar to the previous answer did not simplify anything.
 NEAR_COPY_RATIO = 0.75
+# Another draft needs a generation (~10-15 s for DeepSeek) and usually a review.
+RETRY_MIN_SECONDS = 12.0
 
 NOTICE_CAPABILITIES = (
     "I can help you understand 1031 exchanges, Delaware Statutory Trusts (DSTs), and "
@@ -358,7 +360,6 @@ class AnswerService:
     ) -> AssistantAnswer:
         mode = GenerationMode.GENERAL_EDUCATION if personalized else GenerationMode.STANDARD
         for attempt in range(2):
-            final = attempt == 1
             labeled = _label(passages)
             try:
                 with activity_step("generation"):
@@ -380,6 +381,9 @@ class AnswerService:
             with activity_step("verification"):
                 verification = verify_answer(result.draft, labeled)
 
+            # A retry that can't finish inside the budget only adds billed work before an
+            # error, so the best checked result so far is final once time runs short.
+            final = attempt == 1 or remaining_seconds(RETRY_MIN_SECONDS) < RETRY_MIN_SECONDS
             if not (result.draft.answerable and verification.explanation):
                 if final:
                     break
